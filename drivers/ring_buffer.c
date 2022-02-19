@@ -5,7 +5,7 @@
 
 #include <stdlib.h>
 
-#include "ringbuffer.h"
+#include "ring_buffer.h"
 
 /**
  * @file
@@ -32,10 +32,21 @@ ring_buffer_init(ring_buffer_t *buffer, size_t size)
 void
 ring_buffer_deinit(ring_buffer_t *buffer)
 {
+        if (buffer == NULL) {
+                return;
+        }
+
+        free(buffer->buffer);
+
+        buffer->buffer = NULL;
+        buffer->buffer_size = 0;
+
+        buffer->tail_index = 0;
+        buffer->head_index = 0;
 }
 
 void
-ring_buffer_queue(ring_buffer_t *buffer, char data)
+ring_buffer_queue(ring_buffer_t *buffer, unsigned char data)
 {
         /* Is buffer full? */
         if(ring_buffer_is_full(buffer)) {
@@ -50,7 +61,7 @@ ring_buffer_queue(ring_buffer_t *buffer, char data)
 }
 
 void
-ring_buffer_queue_arr(ring_buffer_t *buffer, const char *data, ring_buffer_size_t size)
+ring_buffer_queue_arr(ring_buffer_t *buffer, const unsigned char *data, ring_buffer_size_t size)
 {
         /* Add bytes; one by one */
         ring_buffer_size_t i;
@@ -60,7 +71,7 @@ ring_buffer_queue_arr(ring_buffer_t *buffer, const char *data, ring_buffer_size_
 }
 
 uint8_t
-ring_buffer_dequeue(ring_buffer_t *buffer, char *data)
+ring_buffer_dequeue(ring_buffer_t *buffer, unsigned char *data)
 {
         if(ring_buffer_is_empty(buffer)) {
                 /* No items */
@@ -73,14 +84,14 @@ ring_buffer_dequeue(ring_buffer_t *buffer, char *data)
 }
 
 ring_buffer_size_t
-ring_buffer_dequeue_arr(ring_buffer_t *buffer, char *data, ring_buffer_size_t len)
+ring_buffer_dequeue_arr(ring_buffer_t *buffer, unsigned char *data, ring_buffer_size_t len)
 {
         if(ring_buffer_is_empty(buffer)) {
                 /* No items */
                 return 0;
         }
 
-        char *data_ptr = data;
+        unsigned char *data_ptr = data;
         ring_buffer_size_t cnt = 0;
         while((cnt < len) && ring_buffer_dequeue(buffer, data_ptr)) {
                 cnt++;
@@ -90,9 +101,9 @@ ring_buffer_dequeue_arr(ring_buffer_t *buffer, char *data, ring_buffer_size_t le
 }
 
 uint8_t
-ring_buffer_peek(ring_buffer_t *buffer, char *data, ring_buffer_size_t index)
+ring_buffer_peek(ring_buffer_t *buffer, unsigned char *data, ring_buffer_size_t index)
 {
-        if(index >= ring_buffer_num_items(buffer)) {
+        if(index >= ring_buffer_count(buffer)) {
                 /* No items at index */
                 return 0;
         }
@@ -105,4 +116,4 @@ ring_buffer_peek(ring_buffer_t *buffer, char *data, ring_buffer_size_t index)
 
 extern inline uint8_t ring_buffer_is_empty(ring_buffer_t *buffer);
 extern inline uint8_t ring_buffer_is_full(ring_buffer_t *buffer);
-extern inline ring_buffer_size_t ring_buffer_num_items(ring_buffer_t *buffer);
+extern inline ring_buffer_size_t ring_buffer_count(ring_buffer_t *buffer);

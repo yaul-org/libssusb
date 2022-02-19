@@ -1,14 +1,13 @@
-#include <inttypes.h>
-
 /**
  * @file
  * Prototypes and structures for the ring buffer module.
  */
 
-#ifndef LIBSSUSB_RINGBUFFER_H
-#define LIBSSUSB_RINGBUFFER_H
+#ifndef _LIBSSUSB_RING_BUFFER_H
+#define _LIBSSUSB_RING_BUFFER_H
 
 #include <inttypes.h>
+#include <stddef.h>
 
 /**
  * The type which is used to hold the size and the indicies of the buffer. Must
@@ -62,7 +61,7 @@ void ring_buffer_deinit(ring_buffer_t *buffer);
  * @param buffer The buffer in which the data should be placed.
  * @param data The byte to place.
  */
-void ring_buffer_queue(ring_buffer_t *buffer, char data);
+void ring_buffer_queue(ring_buffer_t *buffer, unsigned char data);
 
 /**
  * Adds an array of bytes to a ring buffer.
@@ -70,7 +69,7 @@ void ring_buffer_queue(ring_buffer_t *buffer, char data);
  * @param data A pointer to the array of bytes to place in the queue.
  * @param size The size of the array.
  */
-void ring_buffer_queue_arr(ring_buffer_t *buffer, const char *data, ring_buffer_size_t size);
+void ring_buffer_queue_arr(ring_buffer_t *buffer, const unsigned char *data, ring_buffer_size_t size);
 
 /**
  * Returns the oldest byte in a ring buffer.
@@ -78,7 +77,7 @@ void ring_buffer_queue_arr(ring_buffer_t *buffer, const char *data, ring_buffer_
  * @param data A pointer to the location at which the data should be placed.
  * @return 1 if data was returned; 0 otherwise.
  */
-uint8_t ring_buffer_dequeue(ring_buffer_t *buffer, char *data);
+uint8_t ring_buffer_dequeue(ring_buffer_t *buffer, unsigned char *data);
 
 /**
  * Returns the <em>len</em> oldest bytes in a ring buffer.
@@ -89,7 +88,7 @@ uint8_t ring_buffer_dequeue(ring_buffer_t *buffer, char *data);
  *
  * @return The number of bytes returned.
  */
-ring_buffer_size_t ring_buffer_dequeue_arr(ring_buffer_t *buffer, char *data, ring_buffer_size_t len);
+ring_buffer_size_t ring_buffer_dequeue_arr(ring_buffer_t *buffer, unsigned char *data, ring_buffer_size_t len);
 
 /**
  * Peeks a ring buffer, i.e. returns an element without removing it.
@@ -100,7 +99,7 @@ ring_buffer_size_t ring_buffer_dequeue_arr(ring_buffer_t *buffer, char *data, ri
  *
  * @return 1 if data was returned; 0 otherwise.
  */
-uint8_t ring_buffer_peek(ring_buffer_t *buffer, char *data, ring_buffer_size_t index);
+uint8_t ring_buffer_peek(ring_buffer_t *buffer, unsigned char *data, ring_buffer_size_t index);
 
 /**
  * Returns whether a ring buffer is empty.
@@ -127,8 +126,8 @@ inline uint8_t ring_buffer_is_full(ring_buffer_t *buffer) {
  * @param buffer The buffer for which the number of items should be returned.
  * @return The number of items in the ring buffer.
  */
-inline ring_buffer_size_t ring_buffer_num_items(ring_buffer_t *buffer) {
+inline ring_buffer_size_t ring_buffer_count(ring_buffer_t *buffer) {
         return ((buffer->head_index - buffer->tail_index) & ring_buffer_mask(buffer));
 }
 
-#endif /* LIBSSUSB_RINGBUFFER_H */
+#endif /* _LIBSSUSB_RING_BUFFER_H */

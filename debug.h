@@ -5,8 +5,8 @@
  * Israel Jacquez <mrkotfw@gmail.com>
  */
 
-#ifndef LIBSSUSB_DEBUG_H_
-#define LIBSSUSB_DEBUG_H_
+#ifndef _LIBSSUSB_DEBUG_H_
+#define _LIBSSUSB_DEBUG_H_
 
 #ifdef DEBUG
 #include <stdio.h>
@@ -22,13 +22,15 @@
 #endif /* DEBUG */
 
 #ifdef DEBUG
-#include "shared.h"
+#include <inttypes.h>
+
+void __debug_hexdump(const uint8_t *, uint32_t);
 
 #define DEBUG_HEXDUMP(buffer, len) do {                                        \
-        debug_hexdump(buffer, len);                                            \
+        __debug_hexdump(buffer, len);                                          \
 } while (false)
 #else
 #define DEBUG_HEXDUMP(...)
 #endif /* DEBUG */
 
-#endif /* !LIBSSUSB_DEBUG_H_ */
+#endif /* !_LIBSSUSB_DEBUG_H_ */

@@ -5,8 +5,10 @@
  * Israel Jacquez <mrkotfw@gmail.com>
  */
 
-#ifndef LIBSSUSB_SHARED_H_
-#define LIBSSUSB_SHARED_H_
+#ifndef _LIBSSUSB_SHARED_H_
+#define _LIBSSUSB_SHARED_H_
+
+#include <sys/cdefs.h>
 
 #include <inttypes.h>
 
@@ -37,19 +39,6 @@
 #define TO_BE(x) (x)
 #endif
 
-#ifdef HAVE_LIBFTD2XX
-#define MAX_ENUMERATE_DEVICES 16
-
-extern FT_HANDLE ft_handle;
-extern FT_STATUS ft_error;
-extern const char *ft_error_strings[];
-
-const char **enumerate_devices(void);
-#else
-extern struct ftdi_context ftdi_ctx;
-extern int ftdi_error;
-#endif /* HAVE_LIBFTD2XX */
-
 #ifndef min
 #define min(a, b)                                                              \
         __extension__ ({ __typeof__ (a) _a = (a);                              \
@@ -66,10 +55,4 @@ extern int ftdi_error;
         })
 #endif /* !max */
 
-int verbose_printf(const char *, ...);
-
-#ifdef DEBUG
-void debug_hexdump(const uint8_t *, uint32_t);
-#endif /* DEBUG */
-
-#endif /* !LIBSSUSB_SHARED_H_ */
+#endif /* !_LIBSSUSB_SHARED_H_ */

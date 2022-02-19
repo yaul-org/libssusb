@@ -7,53 +7,53 @@ project(
 project_description = 'Library for accessing Sega Saturn related USB devices'
 
 project_headers = [
-  'crc.h',
-  'debug.h',
-  'driver.h',
-  'drivers.h',
-  'fifo.h',
-  'ringbuffer.h',
-  'shared.h'
+  'ssusb.h'
 ]
 
 project_source_files = [
-  'crc.c',
-  'drivers/datalink.c',
+  'drivers/crc.c',
+  'drivers/ring_buffer.c',
   'drivers/usb-cartridge.c',
-  'drivers.c',
-  'ringbuffer.c',
-  'shared.c'
+  'file.c',
+  'ssusb_interface.c',
+  'ssusb.c',
 ]
 
-libftdi_dep = dependency('libftdi1', version : '>=1.3', required : false)
-if not libftdi_dep.found()
-  libftdi_dep = dependency('libftdi', version : '>=0.20')
-else
-  add_project_arguments('-DHAVE_LIBFTDI1', language : 'c')
-endif
-
 project_dependencies = [
-  libftdi_dep
+]
+
+include_directories = [
+  include_directories('.')
 ]
 
 build_args = [
 ]
 
+link_args = [
+]
+
+libftdi_dep = dependency('libftdi1', version: '>=1.5', required: true)
+project_dependencies += libftdi_dep
+
+if get_option('buildtype').startswith('debug')
+  project_source_files += 'debug.c'
+
+  add_project_arguments('-DDEBUG',  language: 'c')
+endif
+
 # Target
 
 public_headers = include_directories('include')
-
-# if target_machine.system() == 'windows' or target_machine.system() == 'cygwin'
-# else
-# endif
+include_directories += public_headers
 
 project_target = static_library(
   meson.project_name(),
   project_source_files,
   install: true,
   c_args: build_args,
+  link_args: link_args,
   gnu_symbol_visibility: 'hidden',
-  include_directories: public_headers,
+  include_directories: include_directories,
   dependencies: project_dependencies,
 )
 

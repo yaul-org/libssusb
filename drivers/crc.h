@@ -5,14 +5,14 @@
  * Israel Jacquez <mrkotfw@gmail.com>
  */
 
-#ifndef LIBSSUSB_CRC_H_
-#define LIBSSUSB_CRC_H_
+#ifndef _LIBSSUSB_CRC_H_
+#define _LIBSSUSB_CRC_H_
 
 #include <inttypes.h>
 #include <stdlib.h>
 
 typedef uint8_t crc_t;
 
-crc_t crc_calculate(const uint8_t *, size_t);
+crc_t crc_calculate(const uint8_t *buffer, size_t buffer_len);
 
-#endif /* !LIBSSUSB_CRC_H_ */
+#endif /* !_LIBSSUSB_CRC_H_ */

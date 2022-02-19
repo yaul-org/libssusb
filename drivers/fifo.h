@@ -5,15 +5,15 @@
  * Israel Jacquez <mrkotfw@gmail.com>
  */
 
-#ifndef LIBSSUSB_FIFO_H_
-#define LIBSSUSB_FIFO_H_
+#ifndef _LIBSSUSB_FIFO_H_
+#define _LIBSSUSB_FIFO_H_
 
-#include <stddef.h>
 #include <inttypes.h>
+#include <stddef.h>
 
 struct fifo {
         const uint8_t *buffer;
         size_t size;
 };
 
-#endif /* !LIBSSUSB_FIFO_H_ */
+#endif /* !_LIBSSUSB_FIFO_H_ */

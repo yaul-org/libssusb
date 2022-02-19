@@ -102,7 +102,7 @@ static struct {
 };
 
 static int dev_init(void);
-static int dev_shutdown(void);
+static int dev_deinit(void);
 
 static int download_buffer(void *, uint32_t, uint32_t);
 static int upload_buffer(void *, uint32_t, uint32_t);
@@ -203,7 +203,7 @@ error:
  *
  */
 static int
-dev_shutdown(void)
+dev_deinit(void)
 {
 #ifdef HAVE_LIBFTD2XX
         if (ft_handle != NULL) {
@@ -1088,15 +1088,15 @@ device_packet_check(const uint8_t *buffer, uint32_t response_type)
         return 0;
 }
 
-const struct device_driver device_datalink = {
-        .name = "USB DataLink Red/Green LED",
-        .init = dev_init,
-        .shutdown = dev_shutdown,
-        .error_stringify = error_stringify,
+const ssusb_device_driver_t __device_datalink = {
+        .name            = "datalink",
+        .description     = "USB DataLink Red/Green LED",
+        .init            = dev_init,
+        .deinit          = dev_deinit,
         .download_buffer = download_buffer,
-        .download_file = download_file,
-        .upload_buffer = upload_buffer,
-        .upload_file = upload_file,
-        .execute_buffer = execute_buffer,
-        .execute_file = execute_file
+        .download_file   = download_file,
+        .upload_buffer   = upload_buffer,
+        .upload_file     = upload_file,
+        .execute_buffer  = execute_buffer,
+        .execute_file    = execute_file
 };

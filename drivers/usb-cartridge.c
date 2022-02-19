@@ -45,7 +45,7 @@
 #include "driver.h"
 #include "shared.h"
 #include "crc.h"
-#include "ringbuffer.h"
+#include "ring_buffer.h"
 #include "fifo.h"
 
 #include <ftdi.h>
@@ -57,74 +57,41 @@
 #define I_PRODUCT       0x6001
 #define I_SERIAL        "AL00P4JX"
 
-#define CMD_DOWNLOAD            (1)
-#define CMD_UPLOAD              (2)
-#define CMD_EXECUTE             (3)
-#define CMD_GET_BUFFER_ADDRESS  (4)
-#define CMD_COPY_EXECUTE        (5)
-#define CMD_EXECUTE_EXT         (6)
+typedef enum {
+        CMD_DOWNLOAD = 1,
+        CMD_UPLOAD,
+        CMD_EXECUTE,
+        CMD_GET_BUFFER_ADDRESS,
+        CMD_COPY_EXECUTE,
+        CMD_EXECUTE_EXT
+} protocol_command_t;
 
-enum {
-        USB_CARTRIDGE_OK,
-        USB_CARTRIDGE_DEVICE_ERROR,
-        USB_CARTRIDGE_DEVICE_NOT_FOUND,
-        USB_CARTRIDGE_DEVICE_NOT_OPENED,
-        USB_CARTRIDGE_IO_ERROR,
-        USB_CARTRIDGE_INSUFFICIENT_READ_DATA,
-        USB_CARTRIDGE_INSUFFICIENT_WRITE_DATA,
-        USB_CARTRIDGE_CORRUPTED_DATA,
-        USB_CARTRIDGE_FILE_NOT_FOUND,
-        USB_CARTRIDGE_FILE_IO_ERROR,
-        USB_CARTRIDGE_BAD_REQUEST,
-        USB_CARTRIDGE_INSUFFICIENT_MEMORY
-};
-
-static uint32_t usb_cartridge_error = USB_CARTRIDGE_OK;
-
+static ssusb_driver_error_t _driver_error = SSUSB_DRIVER_OK;
 static ring_buffer_t _read_ringbuffer;
+static struct ftdi_context _ftdi_ctx;
+static int _ftdi_error = 0;
 
-static const char *usb_cartridge_error_strings[] = {
-        "USB_CARTRIDGE_OK",
-        "USB_CARTRIDGE_DEVICE_ERROR",
-        "USB_CARTRIDGE_DEVICE_NOT_FOUND",
-        "USB_CARTRIDGE_DEVICE_NOT_OPENED",
-        "USB_CARTRIDGE_IO_ERROR",
-        "USB_CARTRIDGE_INSUFFICIENT_READ_DATA",
-        "USB_CARTRIDGE_INSUFFICIENT_WRITE_DATA",
-        "USB_CARTRIDGE_CORRUPTED_DATA",
-        "USB_CARTRIDGE_FILE_NOT_FOUND",
-        "USB_CARTRIDGE_FILE_IO_ERROR",
-        "USB_CARTRIDGE_BAD_REQUEST",
-        "USB_CARTRIDGE_INSUFFICIENT_MEMORY"
-};
+static int _init(void);
+static int _deinit(void);
 
-static int _dev_init(void);
-static int _dev_shutdown(void);
+/* In x86_64-w64-mingw32/include/fcntl.h, there is a conflict with a previous
+ * declaration */
+static int _usb_cart_read(void *buffer, size_t len);
+static int _usb_cart_send(const void *buffer, size_t len);
 
-static int _usb_cart_read(void *, uint32_t);
-static int _usb_cart_send(void *, uint32_t);
+static int _upload_execute_buffer(const void *buffer, uint32_t base_address,
+    size_t len, bool execute);
 
-static int _download_buffer(void *, uint32_t, uint32_t);
-static int _upload_buffer(void *, uint32_t, uint32_t);
-static int _execute_buffer(void *, uint32_t, uint32_t);
-
-static int _download_file(const char *, uint32_t, uint32_t);
-static int _upload_file(const char *, uint32_t);
-static int _execute_file(const char *, uint32_t);
-
-static int _upload_execute_buffer(void *, uint32_t, uint32_t, bool);
-static int _upload_execute_file(const char *, uint32_t, bool);
-
-static int _device_read(uint8_t *, uint32_t, bool block);
-static int _device_write(uint8_t *, uint32_t);
+static int _device_read(void *buffer, size_t len, bool block);
+static int _device_write(const void *buffer, size_t len);
 
 /* Helpers */
-static int _send_command(uint32_t, uint32_t, size_t);
-static int _receive_checksum(const uint8_t *, size_t);
-static int _send_checksum(const uint8_t *, size_t);
+static int _command_send(protocol_command_t command, uint32_t address, size_t len);
+static int _checksum_receive(const void *buffer, size_t len);
+static int _checksum_send(const void *buffer, size_t len);
 
 static int
-_dev_init(void)
+_init(void)
 {
         DEBUG_PRINTF("Enter\n");
 
@@ -134,30 +101,30 @@ _dev_init(void)
 #define READ_PAYLOAD_SIZE       (USB_PAYLOAD(USB_READ_PACKET_SIZE))
 #define WRITE_PAYLOAD_SIZE      (USB_PAYLOAD(USB_WRITE_PACKET_SIZE))
 
-        if ((ftdi_error = ftdi_init(&ftdi_ctx)) < 0) {
+        if ((_ftdi_error = ftdi_init(&_ftdi_ctx)) < 0) {
                 DEBUG_PRINTF("ftdi_init()\n");
                 goto error;
         }
-        ftdi_error = ftdi_usb_open(&ftdi_ctx, I_VENDOR, I_PRODUCT);
-        if (ftdi_error < 0) {
+        _ftdi_error = ftdi_usb_open(&_ftdi_ctx, I_VENDOR, I_PRODUCT);
+        if (_ftdi_error < 0) {
                 DEBUG_PRINTF("ftdi_usb_open()\n");
                 goto error;
         }
-        if ((ftdi_error = ftdi_tcioflush(&ftdi_ctx)) < 0) {
+        if ((_ftdi_error = ftdi_tcioflush(&_ftdi_ctx)) < 0) {
                 DEBUG_PRINTF("ftdi_tcioflush()\n");
                 goto error;
         }
-        if ((ftdi_error = ftdi_read_data_set_chunksize(&ftdi_ctx,
+        if ((_ftdi_error = ftdi_read_data_set_chunksize(&_ftdi_ctx,
                     USB_READ_PACKET_SIZE)) < 0) {
                 DEBUG_PRINTF("ftdi_read_data_set_chunksize()\n");
                 goto error;
         }
-        if ((ftdi_error = ftdi_write_data_set_chunksize(&ftdi_ctx,
+        if ((_ftdi_error = ftdi_write_data_set_chunksize(&_ftdi_ctx,
                     USB_WRITE_PACKET_SIZE)) < 0) {
                 DEBUG_PRINTF("ftdi_write_data_set_chunksize()\n");
                 goto error;
         }
-        if ((ftdi_error = ftdi_set_bitmode(&ftdi_ctx, 0x00, BITMODE_RESET)) < 0) {
+        if ((_ftdi_error = ftdi_set_bitmode(&_ftdi_ctx, 0x00, BITMODE_RESET)) < 0) {
                 DEBUG_PRINTF("ftdi_set_bitmode()\n");
                 goto error;
         }
@@ -167,58 +134,76 @@ _dev_init(void)
         return 0;
 
 error:
-        DEBUG_PRINTF("ftdi_error: %i\n", ftdi_error);
+        DEBUG_PRINTF("_ftdi_error: %i\n", _ftdi_error);
 
-        ftdi_usb_close(&ftdi_ctx);
+        if ((_ftdi_error = ftdi_usb_close(&_ftdi_ctx)) < 0) {
+                return -1;
+        }
 
         return -1;
 }
 
 static int
-_dev_shutdown(void)
+_deinit(void)
 {
-        DEBUG_PRINTF("Enterr\n");
+        DEBUG_PRINTF("Enter\n");
 
-        if ((ftdi_error = ftdi_tcioflush(&ftdi_ctx)) < 0) {
-                return -1;
+        int exit_code;
+        exit_code = 0;
+
+        if ((_ftdi_error = ftdi_tcioflush(&_ftdi_ctx)) < 0) {
+                exit_code = -1;
+                goto exit;
         }
 
-        ftdi_usb_close(&ftdi_ctx);
+        if ((_ftdi_error = ftdi_usb_close(&_ftdi_ctx)) < 0) {
+                exit_code = -1;
+                goto exit;
+        }
 
-        return 0;
+exit:
+        ring_buffer_deinit(&_read_ringbuffer);
+
+        ftdi_deinit(&_ftdi_ctx);
+
+        return exit_code;
+}
+
+static ssusb_driver_error_t
+_error(void)
+{
+        return _driver_error;
 }
 
 static int
-_device_read(uint8_t *read_buffer, uint32_t len, bool block)
+_device_read(void *buffer, size_t len, bool block)
 {
         DEBUG_PRINTF("Enter\n");
         DEBUG_PRINTF("Request read of %iB\n", len);
 
-        usb_cartridge_error = USB_CARTRIDGE_OK;
+        _driver_error = SSUSB_DRIVER_OK;
 
-        uint8_t *read_buffer_p;
-        read_buffer_p = read_buffer;
+        uint8_t *buffer_pos;
+        buffer_pos = buffer;
 
-        ring_buffer_size_t ringbuffer_size =
-            ring_buffer_num_items(&_read_ringbuffer);
+        const ring_buffer_size_t ringbuffer_size =
+            ring_buffer_count(&_read_ringbuffer);
+        const uint32_t preread_amount = min(ringbuffer_size, len);
 
-        const uint32_t from_rb = min(ringbuffer_size, len);
+        ring_buffer_dequeue_arr(&_read_ringbuffer, buffer_pos, preread_amount);
 
-        ring_buffer_dequeue_arr(&_read_ringbuffer, read_buffer_p, from_rb);
+        buffer_pos += preread_amount;
 
-        read_buffer_p += from_rb;
-
-        while ((uintptr_t)(read_buffer_p - read_buffer) < len) {
+        while (((uintptr_t)buffer_pos - (uintptr_t)buffer) < len) {
                 DEBUG_PRINTF("Call to ftdi_read_data(%i)\n", len);
-                DEBUG_HEXDUMP(read_buffer, read);
 
                 int read_amount;
-                if ((read_amount = ftdi_read_data(&ftdi_ctx, read_buffer_p, len)) < 0) {
-                        ftdi_error = read_amount;
+                if ((read_amount = ftdi_read_data(&_ftdi_ctx, buffer_pos, len)) < 0) {
+                        _ftdi_error = read_amount;
                         return -1;
                 }
 
-                read_buffer_p += read_amount;
+                buffer_pos += read_amount;
 
                 DEBUG_PRINTF("Read %iB\n", read_amount);
 
@@ -227,28 +212,29 @@ _device_read(uint8_t *read_buffer, uint32_t len, bool block)
                 }
         }
 
-        DEBUG_PRINTF("%iB read\n", read_buffer_p - read_buffer);
+        DEBUG_PRINTF("%iB read\n", (uintptr_t)buffer_pos - (uintptr_t)buffer);
 
-        return (read_buffer_p - read_buffer);
+        return 0;
 }
 
 static int
-_device_write(uint8_t *write_buffer, uint32_t len)
+_device_write(const void *buffer, size_t len)
 {
         DEBUG_PRINTF("Enter\n");
         DEBUG_PRINTF("Writing %iB\n", len);
 
-        usb_cartridge_error = USB_CARTRIDGE_OK;
+        _driver_error = SSUSB_DRIVER_OK;
 
         uint32_t written;
         written = 0;
 
         while ((len - written) > 0) {
                 int amount;
-                if ((amount = ftdi_write_data(&ftdi_ctx, write_buffer, len)) < 0) {
-                        ftdi_error = amount;
+                if ((amount = ftdi_write_data(&_ftdi_ctx, buffer, len)) < 0) {
+                        _ftdi_error = amount;
                         return -1;
                 }
+
                 written += amount;
         }
 
@@ -258,184 +244,7 @@ _device_write(uint8_t *write_buffer, uint32_t len)
 }
 
 static int
-_upload_file(const char *input_file, uint32_t base_address)
-{
-        DEBUG_PRINTF("Enter\n");
-
-        int ret;
-        ret = _upload_execute_file(input_file, base_address,
-            /* execute = */ false);
-
-        DEBUG_PRINTF("Exit\n");
-
-        return ret;
-}
-
-static int
-_download_file(const char *output_file, uint32_t base_address,
-    uint32_t len)
-{
-        DEBUG_PRINTF("Enter\n");
-
-        int exit_code;
-        exit_code = 0;
-
-        usb_cartridge_error = USB_CARTRIDGE_OK;
-
-        if (output_file == NULL) {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
-                return -1;
-        }
-        if (*output_file == '\0') {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
-                return -1;
-        }
-
-        FILE *offp;
-        offp = NULL;
-        if ((offp = fopen(output_file, "wb+")) == NULL) {
-                return -1;
-        }
-
-        uint8_t *buffer;
-        buffer = NULL;
-        if ((buffer = (uint8_t *)malloc(len)) == NULL) {
-                usb_cartridge_error = USB_CARTRIDGE_INSUFFICIENT_MEMORY;
-                goto error;
-        }
-        memset(buffer, 0x00, len);
-
-        int ret;
-        if ((ret = _download_buffer(buffer, base_address, len)) < 0) {
-                goto error;
-        }
-
-        (void)fwrite(buffer, 1, len, offp);
-
-        goto exit;
-
-error:
-        exit_code = -1;
-
-        (void)printf("ERROR: %i %s\n", __LINE__, usb_cartridge_error_strings[usb_cartridge_error]);
-
-exit:
-        if (buffer != NULL) {
-                free(buffer);
-        }
-
-        if (offp != NULL) {
-                fclose(offp);
-        }
-
-        DEBUG_PRINTF("Exit\n");
-
-        return exit_code;
-}
-
-static int
-_execute_file(const char *input_file, uint32_t base_address)
-{
-        DEBUG_PRINTF("Enter\n");
-
-        int ret;
-        ret = _upload_execute_file(input_file, base_address,
-            /* execute = */ true);
-
-        DEBUG_PRINTF("Exit\n");
-
-        return ret;
-}
-
-static int
-_upload_execute_file(const char *input_file, uint32_t base_address, bool execute)
-{
-        DEBUG_PRINTF("Enter\n");
-
-        int exit_code;
-        exit_code = 0;
-
-        usb_cartridge_error = USB_CARTRIDGE_OK;
-
-        /* Sanity check */
-        if (input_file == NULL) {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
-                return -1;
-        }
-        if (*input_file == '\0') {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
-                return -1;
-        }
-
-        FILE *iffp;
-        iffp = NULL;
-
-        uint8_t *buffer;
-        buffer = NULL;
-
-        if ((iffp = fopen(input_file, "rb+")) == NULL) {
-                usb_cartridge_error = USB_CARTRIDGE_FILE_NOT_FOUND;
-                goto error;
-        }
-
-        /* Determine the size of file */
-        int32_t len;
-        if ((fseek(iffp, 0, SEEK_END)) < 0) {
-                usb_cartridge_error = USB_CARTRIDGE_FILE_IO_ERROR;
-                goto error;
-        }
-        long tell;
-        if ((tell = ftell(iffp)) < 0) {
-                usb_cartridge_error = USB_CARTRIDGE_FILE_IO_ERROR;
-                goto error;
-        }
-        rewind(iffp);
-
-        if ((len = (int32_t)tell) < 2) {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
-                goto error;
-        }
-
-        if ((buffer = (uint8_t *)malloc(len)) == NULL) {
-                usb_cartridge_error = USB_CARTRIDGE_INSUFFICIENT_MEMORY;
-                goto error;
-        }
-        memset(buffer, 0x00, len);
-
-        size_t read;
-        if ((read = fread(buffer, 1, len, iffp)) != (size_t)len) {
-                usb_cartridge_error = USB_CARTRIDGE_FILE_IO_ERROR;
-                goto error;
-        }
-
-        int ret;
-        if ((ret = _upload_execute_buffer(buffer, base_address, len, execute)) < 0) {
-                goto error;
-        }
-
-        goto exit;
-
-error:
-        exit_code = -1;
-
-        (void)printf("ERROR: %i %s\n", __LINE__, usb_cartridge_error_strings[usb_cartridge_error]);
-
-exit:
-        if (buffer != NULL) {
-                free(buffer);
-        }
-
-        if (iffp != NULL) {
-                fclose(iffp);
-        }
-
-        DEBUG_PRINTF("Exit\n");
-
-        return exit_code;
-}
-
-static int
-_upload_buffer(void *buffer, uint32_t base_address, uint32_t len)
+_upload_buffer(const void *buffer, uint32_t base_address, size_t len)
 {
         DEBUG_PRINTF("Enter\n");
 
@@ -448,114 +257,117 @@ _upload_buffer(void *buffer, uint32_t base_address, uint32_t len)
         return ret;
 }
 
-static const char *
-error_stringify(void)
-{
-        return ftdi_get_error_string(&ftdi_ctx);
-}
-
-static const struct fifo *
-_peek_rx_fifo(void)
-{
-        static struct fifo fifo;
-
-        if (fifo.buffer == NULL) {
-                fifo.buffer = malloc(USB_READ_PACKET_SIZE);
-                assert(fifo.buffer != NULL);
-        }
-        memset((void *)fifo.buffer, 0, USB_READ_PACKET_SIZE);
-
-        ring_buffer_size_t ringbuffer_size =
-            ring_buffer_num_items(&_read_ringbuffer);
-
-        for (int32_t i = ringbuffer_size - 1; i >= 0; i--) {
-                char * const buffer_p = (char *)&fifo.buffer[i];
-
-                ring_buffer_peek(&_read_ringbuffer, buffer_p, i);
-        }
-
-        fifo.size = ringbuffer_size;
-
-        return &fifo;
-}
-
 static int
-_test_rx_fifo(void)
+_poll(size_t *read)
 {
-        usb_cartridge_error = USB_CARTRIDGE_OK;
+        _driver_error = SSUSB_DRIVER_OK;
 
         static uint8_t read_buffer[READ_PAYLOAD_SIZE];
-        memset(read_buffer, 0, READ_PAYLOAD_SIZE);
+
+        (void)memset(read_buffer, 0, READ_PAYLOAD_SIZE);
+
+        *read = 0;
 
         int amount;
-        if ((amount = ftdi_read_data(&ftdi_ctx, read_buffer, READ_PAYLOAD_SIZE)) < 0) {
-                printf("_test_rx_fifo ERROR\n");
-                fflush(stdout);
-                ftdi_error = amount;
+        if ((amount = ftdi_read_data(&_ftdi_ctx, read_buffer, READ_PAYLOAD_SIZE)) < 0) {
+                _ftdi_error = SSUSB_DRIVER_DEVICE_ERROR;
                 return -1;
         }
 
         ring_buffer_queue_arr(&_read_ringbuffer, read_buffer, amount);
 
-        ring_buffer_size_t ringbuffer_size =
-            ring_buffer_num_items(&_read_ringbuffer);
+        *read = ring_buffer_count(&_read_ringbuffer);
 
-        return ringbuffer_size;
+        return 0;
 }
 
 static int
-_usb_cart_fast_read(void *buffer, uint32_t len)
+_fifo_alloc(struct fifo **fifo)
 {
-        DEBUG_PRINTF("Enter\n");
+        _driver_error = SSUSB_DRIVER_OK;
 
-        int read_amount;
-        read_amount = 0;
-
-        /* ft_error = FT_OK; */
-        usb_cartridge_error = USB_CARTRIDGE_OK;
-
-        /* Sanity check */
-        if (buffer == NULL) {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
-                goto error;
+        *fifo = malloc(sizeof(struct fifo));
+        if (*fifo == NULL) {
+                _driver_error = SSUSB_DRIVER_INSUFFICIENT_MEMORY;
+                return -1;
         }
 
-        if ((read_amount = _device_read(buffer, len, false)) < 0) {
-                goto error;
+        (*fifo)->buffer = malloc(USB_READ_PACKET_SIZE);
+        if ((*fifo)->buffer == NULL) {
+                _driver_error = SSUSB_DRIVER_INSUFFICIENT_MEMORY;
+                return -1;
         }
 
-        goto exit;
+        (void)memset((void *)(*fifo)->buffer, 0, USB_READ_PACKET_SIZE);
 
-error:
-        read_amount = -1;
+        (*fifo)->size = 0;
 
-        (void)printf("ERROR: %i %s\n", __LINE__, usb_cartridge_error_strings[usb_cartridge_error]);
-
-exit:
-        DEBUG_PRINTF("Exit\n");
-
-        return read_amount;
+        return 0;
 }
 
+static int
+_fifo_free(struct fifo *fifo)
+{
+        _driver_error = SSUSB_DRIVER_OK;
+
+        if (fifo == NULL) {
+                _driver_error = SSUSB_DRIVER_PARAM_NULL;
+                return -1;
+        }
+
+        free((void *)fifo->buffer);
+
+        fifo->buffer = NULL;
+        fifo->size = 0;
+
+        free(fifo);
+
+        return 0;
+}
 
 static int
-_usb_cart_read(void *buffer, uint32_t len)
+_peek(struct fifo *fifo)
+{
+        _driver_error = SSUSB_DRIVER_OK;
+
+        if (fifo == NULL) {
+                _driver_error = SSUSB_DRIVER_PARAM_NULL;
+                return -1;
+        }
+
+        (void)memset((void *)fifo->buffer, 0, USB_READ_PACKET_SIZE);
+
+        const ring_buffer_size_t ringbuffer_size =
+            ring_buffer_count(&_read_ringbuffer);
+
+        for (int32_t i = ringbuffer_size - 1; i >= 0; i--) {
+                uint8_t * const buffer_pos = (uint8_t *)&fifo->buffer[i];
+
+                ring_buffer_peek(&_read_ringbuffer, buffer_pos, i);
+        }
+
+        fifo->size = ringbuffer_size;
+
+        return 0;
+}
+
+static int
+_usb_cart_read(void *buffer, size_t len)
 {
         DEBUG_PRINTF("Enter\n");
 
         int exit_code;
         exit_code = 0;
 
-        /* ft_error = FT_OK; */
-        usb_cartridge_error = USB_CARTRIDGE_OK;
+        _driver_error = SSUSB_DRIVER_OK;
 
         /* Sanity check */
         if (buffer == NULL) {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
+                _driver_error = SSUSB_DRIVER_BAD_REQUEST;
                 goto error;
         }
 
-        if ((_device_read(buffer, len, true)) < 0) {
+        if ((_device_read(buffer, len, /* block = */ true)) < 0) {
                 goto error;
         }
 
@@ -564,7 +376,7 @@ _usb_cart_read(void *buffer, uint32_t len)
 error:
         exit_code = -1;
 
-        (void)printf("ERROR: %i %s\n", __LINE__, usb_cartridge_error_strings[usb_cartridge_error]);
+        /* (void)printf("ERROR: %i %s\n", __LINE__, _error_strings[_error]); */
 
 exit:
         DEBUG_PRINTF("Exit\n");
@@ -573,19 +385,17 @@ exit:
 }
 
 static int
-_usb_cart_send(void *buffer, uint32_t len)
+_usb_cart_send(const void *buffer, size_t len)
 {
         DEBUG_PRINTF("Enter\n");
 
         int exit_code;
         exit_code = 0;
 
-        /* ft_error = FT_OK; */
-        usb_cartridge_error = USB_CARTRIDGE_OK;
+        _driver_error = SSUSB_DRIVER_OK;
 
-        /* Sanity check */
         if (buffer == NULL) {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
+                _driver_error = SSUSB_DRIVER_BAD_REQUEST;
                 goto error;
         }
 
@@ -598,7 +408,7 @@ _usb_cart_send(void *buffer, uint32_t len)
 error:
         exit_code = -1;
 
-        (void)printf("ERROR: %i %s\n", __LINE__, usb_cartridge_error_strings[usb_cartridge_error]);
+        /* (void)printf("ERROR: %i %s\n", __LINE__, _error_strings[_error]); */
 
 exit:
         DEBUG_PRINTF("Exit\n");
@@ -607,28 +417,27 @@ exit:
 }
 
 static int
-_download_buffer(void *buffer, uint32_t base_address, uint32_t len)
+_download_buffer(void *buffer, uint32_t base_address, size_t len)
 {
         DEBUG_PRINTF("Enter\n");
 
         int exit_code;
         exit_code = 0;
 
-        /* ft_error = FT_OK; */
-        usb_cartridge_error = USB_CARTRIDGE_OK;
+        _driver_error = SSUSB_DRIVER_OK;
 
         /* Sanity check */
         if (buffer == NULL) {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
+                _driver_error = SSUSB_DRIVER_BAD_REQUEST;
                 goto error;
         }
 
         if (base_address == 0x00000000) {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
+                _driver_error = SSUSB_DRIVER_BAD_REQUEST;
                 goto error;
         }
 
-        if ((_send_command(CMD_DOWNLOAD, base_address, len)) < 0) {
+        if ((_command_send(CMD_DOWNLOAD, base_address, len)) < 0) {
                 goto error;
         }
 
@@ -636,7 +445,7 @@ _download_buffer(void *buffer, uint32_t base_address, uint32_t len)
                 goto error;
         }
 
-        if ((_receive_checksum(buffer, len)) < 0) {
+        if ((_checksum_receive(buffer, len)) < 0) {
                 goto error;
         }
 
@@ -645,7 +454,7 @@ _download_buffer(void *buffer, uint32_t base_address, uint32_t len)
 error:
         exit_code = -1;
 
-        (void)printf("ERROR: %i %s\n", __LINE__, usb_cartridge_error_strings[usb_cartridge_error]);
+        /* (void)printf("ERROR: %i %s\n", __LINE__, _error_strings[_error]); */
 
 exit:
         DEBUG_PRINTF("Exit\n");
@@ -654,7 +463,7 @@ exit:
 }
 
 static int
-_execute_buffer(void *buffer, uint32_t base_address, uint32_t len)
+_execute_buffer(const void *buffer, uint32_t base_address, size_t len)
 {
         DEBUG_PRINTF("Enter\n");
 
@@ -667,32 +476,31 @@ _execute_buffer(void *buffer, uint32_t base_address, uint32_t len)
 }
 
 static int
-_upload_execute_buffer(void *buffer, uint32_t base_address,
-    uint32_t len, bool execute)
+_upload_execute_buffer(const void *buffer, uint32_t base_address,
+    size_t len, bool execute)
 {
         DEBUG_PRINTF("Enter\n");
 
         int exit_code;
         exit_code = 0;
 
-        /* ft_error = FT_OK; */
-        usb_cartridge_error = USB_CARTRIDGE_OK;
+        _driver_error = SSUSB_DRIVER_OK;
 
         /* Sanity check */
         if (buffer == NULL) {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
+                _driver_error = SSUSB_DRIVER_BAD_REQUEST;
                 goto error;
         }
 
         if (base_address == 0x00000000) {
-                usb_cartridge_error = USB_CARTRIDGE_BAD_REQUEST;
+                _driver_error = SSUSB_DRIVER_BAD_REQUEST;
                 goto error;
         }
 
         uint8_t command;
         command = (execute) ? CMD_EXECUTE_EXT : CMD_UPLOAD;
 
-        if ((_send_command(command, base_address, len)) < 0) {
+        if ((_command_send(command, base_address, len)) < 0) {
                 goto error;
         }
 
@@ -700,7 +508,7 @@ _upload_execute_buffer(void *buffer, uint32_t base_address,
                 goto error;
         }
 
-        if ((_send_checksum(buffer, len)) < 0) {
+        if ((_checksum_send(buffer, len)) < 0) {
                 goto error;
         }
 
@@ -709,7 +517,7 @@ _upload_execute_buffer(void *buffer, uint32_t base_address,
 error:
         exit_code = -1;
 
-        (void)printf("ERROR: %i %s\n", __LINE__, usb_cartridge_error_strings[usb_cartridge_error]);
+        /* (void)printf("ERROR: %i %s\n", __LINE__, _error_strings[_error]); */
 
 exit:
         DEBUG_PRINTF("Exit\n");
@@ -718,7 +526,7 @@ exit:
 }
 
 static int
-_send_command(uint32_t command, uint32_t address, size_t len)
+_command_send(protocol_command_t command, uint32_t address, size_t len)
 {
 #ifdef DEBUG
         static const char *command2str[] = {
@@ -732,15 +540,16 @@ _send_command(uint32_t command, uint32_t address, size_t len)
         };
 #endif /* DEBUG */
 
-        usb_cartridge_error = USB_CARTRIDGE_OK;
+        _driver_error = SSUSB_DRIVER_OK;
 
         uint8_t buffer[13];
         uint8_t buffer_len;
 
-        DEBUG_PRINTF("Command: \"%s\" (0x%02X)\n", command2str[command],
+        DEBUG_PRINTF("Command: \"%s\" (0x%02X)\n",
+            command2str[command],
             command);
         DEBUG_PRINTF("Address: 0x%08X\n", address);
-        DEBUG_PRINTF("Size: %iB (0x%08X)\n", (uint32_t)len, (uint32_t)len);
+        DEBUG_PRINTF("Size: %iB (0x%08X)\n", (size_t)len, (size_t)len);
 
         buffer[ 0] = command;
 
@@ -769,27 +578,23 @@ _send_command(uint32_t command, uint32_t address, size_t len)
 }
 
 static int
-_receive_checksum(const uint8_t *buffer, size_t buffer_len)
+_checksum_receive(const void *buffer, size_t len)
 {
-        usb_cartridge_error = USB_CARTRIDGE_OK;
+        _driver_error = SSUSB_DRIVER_OK;
 
-        crc_t checksum;
-        checksum = crc_calculate(buffer, buffer_len);
+        const crc_t checksum = crc_calculate(buffer, len);
 
-        uint8_t read_buffer[1];
-        read_buffer[0] = 0x00;
-
-        int ret;
-        if ((ret = _device_read(read_buffer, sizeof(read_buffer), true)) < 0) {
-                return ret;
+        uint8_t read_buffer;
+        if ((_device_read(&read_buffer, sizeof(read_buffer), true)) < 0) {
+                return -1;
         }
 
-        if ((crc_t)read_buffer[0] != checksum) {
+        if ((crc_t)read_buffer != checksum) {
                 DEBUG_PRINTF("Checksum received (0x%02X) does not match calculated (0x%02X)\n",
-                    (uint8_t)read_buffer[0],
+                    (uint8_t)read_buffer,
                     checksum);
 
-                usb_cartridge_error = USB_CARTRIDGE_CORRUPTED_DATA;
+                _driver_error = SSUSB_DRIVER_CORRUPTED_DATA;
                 return -1;
         }
 
@@ -797,48 +602,42 @@ _receive_checksum(const uint8_t *buffer, size_t buffer_len)
 }
 
 static int
-_send_checksum(const uint8_t *buffer, size_t buffer_len)
+_checksum_send(const void *buffer, size_t len)
 {
-        usb_cartridge_error = USB_CARTRIDGE_OK;
+        _driver_error = SSUSB_DRIVER_OK;
 
-        int ret;
+        const crc_t crc = crc_calculate(buffer, len);
 
-        uint8_t write_buffer[1];
-        write_buffer[0] = (uint8_t)crc_calculate(buffer, buffer_len);
-
-        if ((ret = _device_write(write_buffer, sizeof(write_buffer))) < 0) {
-                return ret;
+        if ((_device_write(&crc, sizeof(crc))) < 0) {
+                return -1;
         }
 
-        uint8_t read_buffer[1];
-        read_buffer[0] = 0x00;
-
-        if ((ret = _device_read(read_buffer, sizeof(read_buffer), true)) < 0) {
-                return ret;
+        uint8_t read_buffer;
+        if ((_device_read(&read_buffer, sizeof(read_buffer), true)) < 0) {
+                return -1;
         }
 
-        if (read_buffer[0] != 0) {
-                usb_cartridge_error = USB_CARTRIDGE_CORRUPTED_DATA;
+        if (read_buffer != 0) {
+                _driver_error = SSUSB_DRIVER_CORRUPTED_DATA;
                 return -1;
         }
 
         return 0;
 }
 
-const struct device_driver device_usb_cartridge = {
-        .name            = "USB Flash Cartridge",
-        .init            = _dev_init,
-        .shutdown        = _dev_shutdown,
-        .error_stringify = error_stringify,
-        .test_rx_fifo    = _test_rx_fifo,
-        .peek_rx_fifo    = _peek_rx_fifo,
-        .fast_read       = _usb_cart_fast_read,
+const ssusb_device_driver_t __device_usb_cartridge = {
+        .name            = "usb-cart",
+        .description     = "USB Flash Cartridge by Anders Montonen (antime)",
+        .init            = _init,
+        .deinit          = _deinit,
+        .error           = _error,
+        .poll            = _poll,
+        .fifo_alloc      = _fifo_alloc,
+        .fifo_free       = _fifo_free,
+        .peek            = _peek,
         .read            = _usb_cart_read,
         .send            = _usb_cart_send,
         .download_buffer = _download_buffer,
-        .download_file   = _download_file,
         .upload_buffer   = _upload_buffer,
-        .upload_file     = _upload_file,
         .execute_buffer  = _execute_buffer,
-        .execute_file    = _execute_file
 };
