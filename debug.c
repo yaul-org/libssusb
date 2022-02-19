@@ -11,7 +11,7 @@
 #include "debug.h"
 
 void
-__debug_hexdump(const uint8_t *buffer, uint32_t len)
+debug_hexdump(const uint8_t *buffer, uint32_t len)
 {
         if (len == 0) {
                 return;

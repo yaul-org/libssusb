@@ -10,7 +10,7 @@
 
 #include "drivers/driver.h"
 
-extern ssusb_ret_t __ssusb_drivers_selected_get(const ssusb_device_driver_t **device);
+extern ssusb_ret_t ssusb_drivers_selected_get(const ssusb_device_driver_t **device);
 
 static ssusb_ret_t
 _upload_execute_file(const char *input_file, uint32_t base_address, bool execute)
@@ -18,20 +18,20 @@ _upload_execute_file(const char *input_file, uint32_t base_address, bool execute
         ssusb_ret_t ret;
 
         const ssusb_device_driver_t *driver;
-        ret = __ssusb_drivers_selected_get(&driver);
+        ret = ssusb_drivers_selected_get(&driver);
         if (ret != SSUSB_OK) {
                 return ret;
         }
 
         file_io_t file;
-        __file_init(&file);
+        file_init(&file);
 
-        ret = __file_open(input_file, &file);
+        ret = file_open(input_file, &file);
         if (ret != SSUSB_OK) {
                 return ret;
         }
 
-        ret = __file_read(&file);
+        ret = file_read(&file);
         if (ret != SSUSB_OK) {
                 return ret;
         }
@@ -50,7 +50,7 @@ _upload_execute_file(const char *input_file, uint32_t base_address, bool execute
                 ret = (execute) ? SSUSB_DEVICE_EXECUTE_ERROR : SSUSB_DEVICE_UPLOAD_ERROR;
         }
 
-        __file_close(&file);
+        file_close(&file);
 
         return ret;
 }
@@ -61,7 +61,7 @@ ssusb_read(void *buffer, size_t len)
         ssusb_ret_t ret;
 
         const ssusb_device_driver_t *driver;
-        ret = __ssusb_drivers_selected_get(&driver);
+        ret = ssusb_drivers_selected_get(&driver);
 
         if (ret != SSUSB_OK) {
                 return ret;
@@ -80,16 +80,16 @@ ssusb_download_file(const char *output_file, uint32_t base_address, size_t len)
         ssusb_ret_t ret;
 
         const ssusb_device_driver_t *driver;
-        ret = __ssusb_drivers_selected_get(&driver);
+        ret = ssusb_drivers_selected_get(&driver);
 
         if (ret != SSUSB_OK) {
                 return ret;
         }
 
         file_io_t file;
-        __file_init(&file);
+        file_init(&file);
 
-        ret = __file_create(output_file, &file);
+        ret = file_create(output_file, &file);
         if (ret != SSUSB_OK) {
                 return ret;
         }
@@ -107,10 +107,10 @@ ssusb_download_file(const char *output_file, uint32_t base_address, size_t len)
                 goto error;
         }
 
-        __file_write(&file);
+        file_write(&file);
 
 error:
-        __file_close(&file);
+        file_close(&file);
 
         return ret;
 }

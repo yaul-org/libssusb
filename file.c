@@ -5,7 +5,7 @@
 #include "file.h"
 
 void
-__file_init(file_io_t *file)
+file_init(file_io_t *file)
 {
         file->stream = NULL;
         file->buffer = NULL;
@@ -13,7 +13,7 @@ __file_init(file_io_t *file)
 }
 
 ssusb_ret_t
-__file_open(const char *input_file, file_io_t *file)
+file_open(const char *input_file, file_io_t *file)
 {
         if ((input_file == NULL) || (*input_file == '\0')) {
                 return SSUSB_FILE_INVALID_PATH;
@@ -27,7 +27,7 @@ __file_open(const char *input_file, file_io_t *file)
 }
 
 ssusb_ret_t
-__file_create(const char *output_file, file_io_t *file)
+file_create(const char *output_file, file_io_t *file)
 {
         if ((output_file == NULL) || (*output_file == '\0')) {
                 return SSUSB_FILE_INVALID_PATH;
@@ -44,7 +44,7 @@ __file_create(const char *output_file, file_io_t *file)
 }
 
 void
-__file_close(file_io_t *file)
+file_close(file_io_t *file)
 {
         if (file == NULL) {
                 return;
@@ -64,7 +64,7 @@ __file_close(file_io_t *file)
 }
 
 ssusb_ret_t
-__file_read(file_io_t *file)
+file_read(file_io_t *file)
 {
         ssusb_ret_t ret;
         ret = SSUSB_OK;
@@ -111,16 +111,16 @@ __file_read(file_io_t *file)
         return ret;
 
 error:
-        __file_close(file);
+        file_close(file);
 
         return ret;
 }
 
 ssusb_ret_t
-__file_write(file_io_t *file)
+file_write(file_io_t *file)
 {
         if ((fwrite(file->buffer, 1, file->len, file->stream)) != file->len) {
-                __file_close(file);
+                file_close(file);
                 return SSUSB_FILE_IO_ERROR;
         }
 

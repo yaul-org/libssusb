@@ -20,20 +20,22 @@ project_source_files = [
 ]
 
 project_dependencies = [
+  dependency('libftdi1', version: '>=1.5', required: true)
 ]
 
 include_directories = [
-  include_directories('.')
+  include_directories('.'),
+  include_directories('include'),
 ]
 
+public_headers = include_directories('include')
+
 build_args = [
+  '-DEXPORT_DLL',
 ]
 
 link_args = [
 ]
-
-libftdi_dep = dependency('libftdi1', version: '>=1.5', required: true)
-project_dependencies += libftdi_dep
 
 if get_option('buildtype').startswith('debug')
   project_source_files += 'debug.c'
@@ -43,10 +45,7 @@ endif
 
 # Target
 
-public_headers = include_directories('include')
-include_directories += public_headers
-
-project_target = static_library(
+project_target = shared_library(
   meson.project_name(),
   project_source_files,
   install: true,

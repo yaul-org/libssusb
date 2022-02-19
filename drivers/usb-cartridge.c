@@ -179,7 +179,7 @@ static int
 _device_read(void *buffer, size_t len, bool block)
 {
         DEBUG_PRINTF("Enter\n");
-        DEBUG_PRINTF("Request read of %iB\n", len);
+        DEBUG_PRINTF("Request read of %zuB\n", len);
 
         _driver_error = SSUSB_DRIVER_OK;
 
@@ -195,7 +195,7 @@ _device_read(void *buffer, size_t len, bool block)
         buffer_pos += preread_amount;
 
         while (((uintptr_t)buffer_pos - (uintptr_t)buffer) < len) {
-                DEBUG_PRINTF("Call to ftdi_read_data(%i)\n", len);
+                DEBUG_PRINTF("Call to ftdi_read_data(..., ..., %zu)\n", len);
 
                 int read_amount;
                 if ((read_amount = ftdi_read_data(&_ftdi_ctx, buffer_pos, len)) < 0) {
@@ -212,7 +212,7 @@ _device_read(void *buffer, size_t len, bool block)
                 }
         }
 
-        DEBUG_PRINTF("%iB read\n", (uintptr_t)buffer_pos - (uintptr_t)buffer);
+        DEBUG_PRINTF("%zuB read\n", (uintptr_t)buffer_pos - (uintptr_t)buffer);
 
         return 0;
 }
@@ -221,7 +221,7 @@ static int
 _device_write(const void *buffer, size_t len)
 {
         DEBUG_PRINTF("Enter\n");
-        DEBUG_PRINTF("Writing %iB\n", len);
+        DEBUG_PRINTF("Writing %zuB\n", len);
 
         _driver_error = SSUSB_DRIVER_OK;
 
@@ -238,7 +238,7 @@ _device_write(const void *buffer, size_t len)
                 written += amount;
         }
 
-        DEBUG_PRINTF("%iB written\n", len);
+        DEBUG_PRINTF("%zuB written\n", len);
 
         return 0;
 }
@@ -549,7 +549,7 @@ _command_send(protocol_command_t command, uint32_t address, size_t len)
             command2str[command],
             command);
         DEBUG_PRINTF("Address: 0x%08X\n", address);
-        DEBUG_PRINTF("Size: %iB (0x%08X)\n", (size_t)len, (size_t)len);
+        DEBUG_PRINTF("Size: %zuB (0x%08zX)\n", len, len);
 
         buffer[ 0] = command;
 

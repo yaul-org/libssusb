@@ -152,7 +152,7 @@ ssusb_drivers_deselect(void)
 }
 
 ssusb_ret_t
-__ssusb_drivers_selected_get(const ssusb_device_driver_t **device)
+ssusb_drivers_selected_get(const ssusb_device_driver_t **device)
 {
         if (!_initialized) {
                 return SSUSB_UNITITIALIZED;
