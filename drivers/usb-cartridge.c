@@ -282,11 +282,11 @@ _poll(size_t *read)
 }
 
 static int
-_fifo_alloc(struct fifo **fifo)
+_fifo_alloc(fifo_t **fifo)
 {
         _driver_error = SSUSB_DRIVER_OK;
 
-        *fifo = malloc(sizeof(struct fifo));
+        *fifo = malloc(sizeof(fifo_t));
         if (*fifo == NULL) {
                 _driver_error = SSUSB_DRIVER_INSUFFICIENT_MEMORY;
                 return -1;
@@ -306,7 +306,7 @@ _fifo_alloc(struct fifo **fifo)
 }
 
 static int
-_fifo_free(struct fifo *fifo)
+_fifo_free(fifo_t *fifo)
 {
         _driver_error = SSUSB_DRIVER_OK;
 
@@ -326,7 +326,7 @@ _fifo_free(struct fifo *fifo)
 }
 
 static int
-_peek(struct fifo *fifo)
+_peek(fifo_t *fifo)
 {
         _driver_error = SSUSB_DRIVER_OK;
 

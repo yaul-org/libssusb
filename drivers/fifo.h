@@ -11,9 +11,9 @@
 #include <inttypes.h>
 #include <stddef.h>
 
-struct fifo {
+typedef struct {
         const uint8_t *buffer;
         size_t size;
-};
+} fifo_t;
 
 #endif /* !_LIBSSUSB_FIFO_H_ */

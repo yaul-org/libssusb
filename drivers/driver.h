@@ -12,7 +12,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 
-struct fifo;
+#include "fifo.h"
 
 #define SSUSB_DRIVER_NAME_LEN        (32)
 #define SSUSB_DRIVER_DESCRIPTION_LEN (256)
@@ -42,9 +42,9 @@ typedef struct {
 
         ssusb_driver_error_t (*error)(void);
 
-        int (*peek)(struct fifo *fifo);
-        int (*fifo_alloc)(struct fifo **fifo);
-        int (*fifo_free)(struct fifo *fifo);
+        int (*peek)(fifo_t *fifo);
+        int (*fifo_alloc)(fifo_t **fifo);
+        int (*fifo_free)(fifo_t *fifo);
 
         int (*poll)(size_t *read);
         int (*read)(void *buffer, size_t len);
