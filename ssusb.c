@@ -5,6 +5,7 @@
  * Israel Jacquez <mrkotfw@gmail.com>
  */
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,11 +14,15 @@
 
 #include "drivers/driver.h"
 
-extern const ssusb_device_driver_t __device_datalink;
+extern const ssusb_device_driver_t __device_datalink_red;
+extern const ssusb_device_driver_t __device_datalink_green;
+extern const ssusb_device_driver_t __device_datalink_bluetooth;
 extern const ssusb_device_driver_t __device_usb_cartridge;
 
 static const ssusb_device_driver_t *_device_drivers[] = {
-        &__device_datalink,
+        &__device_datalink_red,
+        &__device_datalink_green,
+        &__device_datalink_bluetooth,
         &__device_usb_cartridge,
         NULL
 };
@@ -85,13 +90,8 @@ ssusb_deinit(void)
 ssusb_ret_t
 ssusb_drivers_list_get(const ssusb_driver_t **driver_list)
 {
-        if (driver_list == NULL) {
-                return SSUSB_ARG_NULL;
-        }
-
-        if (!_initialized) {
-                return SSUSB_UNITITIALIZED;
-        }
+        assert(_initialized);
+        assert(driver_list != NULL);
 
         *driver_list = _driver_list;
 
@@ -101,9 +101,7 @@ ssusb_drivers_list_get(const ssusb_driver_t **driver_list)
 ssusb_ret_t
 ssusb_drivers_select(const char *driver_name)
 {
-        if (!_initialized) {
-                return SSUSB_UNITITIALIZED;
-        }
+        assert(_initialized);
 
         if ((driver_name == NULL) || (*driver_name == '\0')) {
                 return SSUSB_SELECT_INVALID_NAME;
@@ -134,9 +132,7 @@ ssusb_drivers_select(const char *driver_name)
 ssusb_ret_t
 ssusb_drivers_deselect(void)
 {
-        if (!_initialized) {
-                return SSUSB_UNITITIALIZED;
-        }
+        assert(_initialized);
 
         if (_device_driver != NULL) {
                 if ((_device_driver->deinit()) != 0) {
@@ -154,13 +150,8 @@ ssusb_drivers_deselect(void)
 ssusb_ret_t
 ssusb_drivers_selected_get(const ssusb_device_driver_t **device)
 {
-        if (!_initialized) {
-                return SSUSB_UNITITIALIZED;
-        }
-
-        if (device == NULL) {
-                return SSUSB_ARG_NULL;
-        }
+        assert(_initialized);
+        assert(device != NULL);
 
         *device = _device_driver;
 

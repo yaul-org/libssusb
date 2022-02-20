@@ -13,8 +13,7 @@
 extern ssusb_ret_t ssusb_drivers_selected_get(const ssusb_device_driver_t **device);
 
 static ssusb_ret_t
-_upload_execute_file(const char *input_file, uint32_t base_address,
-    bool execute)
+_upload_execute_file(const char *file, uint32_t base_address, bool execute)
 {
         ssusb_ret_t ret;
 
@@ -24,34 +23,31 @@ _upload_execute_file(const char *input_file, uint32_t base_address,
                 return ret;
         }
 
-        file_io_t file;
-        file_init(&file);
-
-        ret = file_open(input_file, &file);
+        void *buffer;
+        size_t buffer_len;
+        ret = file_read(file, &buffer, &buffer_len);
         if (ret != SSUSB_OK) {
-                return ret;
-        }
-
-        ret = file_read(&file);
-        if (ret != SSUSB_OK) {
-                return ret;
+                goto exit;
         }
 
         int driver_ret;
 
         if (execute) {
-                driver_ret = driver->execute_buffer(file.buffer,
-                    base_address, file.len);
+                driver_ret =
+                    driver->execute_buffer(buffer, base_address, buffer_len);
         } else {
-                driver_ret = driver->upload_buffer(file.buffer,
-                    base_address, file.len);
+                driver_ret =
+                    driver->upload_buffer(buffer, base_address, buffer_len);
         }
 
         if (driver_ret < 0) {
                 ret = (execute) ? SSUSB_DEVICE_EXECUTE_ERROR : SSUSB_DEVICE_UPLOAD_ERROR;
         }
 
-        file_close(&file);
+exit:
+        if (buffer == NULL) {
+                free(buffer);
+        }
 
         return ret;
 }
@@ -88,7 +84,7 @@ ssusb_write(const void *buffer, size_t len)
         }
 
         if ((driver->write(buffer, len)) < 0) {
-                return SSUSB_DEVICE_READ_ERROR;
+                return SSUSB_DEVICE_WRITE_ERROR;
         }
 
         return SSUSB_OK;
@@ -106,31 +102,24 @@ ssusb_download_file(const char *output_file, uint32_t base_address, size_t len)
                 return ret;
         }
 
-        file_io_t file;
-        file_init(&file);
-
-        ret = file_create(output_file, &file);
-        if (ret != SSUSB_OK) {
-                return ret;
-        }
-
-        if ((file.buffer = malloc(file.len)) == NULL) {
+        void *buffer;
+        if ((buffer = malloc(len)) == NULL) {
                 ret = SSUSB_INSUFFICIENT_MEMORY;
                 goto error;
         }
-        (void)memset(file.buffer, 0, file.len);
+        (void)memset(buffer, 0, len);
 
-        file.len = len;
-
-        if ((driver->download_buffer(file.buffer, base_address, file.len)) < 0) {
+        if ((driver->download_buffer(buffer, base_address, len)) < 0) {
                 ret = SSUSB_DEVICE_DOWNLOAD_ERROR;
                 goto error;
         }
 
-        file_write(&file);
+        ret = file_write(output_file, buffer, len);
 
 error:
-        file_close(&file);
+        if (buffer == NULL) {
+                free(buffer);
+        }
 
         return ret;
 }

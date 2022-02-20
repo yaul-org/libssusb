@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,16 +25,8 @@ _errno_convert(void)
         }
 }
 
-void
-file_init(file_io_t *file)
-{
-        file->stream = NULL;
-        file->buffer = NULL;
-        file->len = 0;
-}
-
-ssusb_ret_t
-file_exists(const char *input_file)
+static ssusb_ret_t
+_file_exists(const char *input_file)
 {
         if ((input_file == NULL) || (*input_file == '\0')) {
                 return SSUSB_FILE_INVALID_PATH;
@@ -54,112 +47,88 @@ file_exists(const char *input_file)
 }
 
 ssusb_ret_t
-file_open(const char *input_file, file_io_t *file)
+file_read(const char *input_file, void **buffer, size_t *len)
 {
-        ssusb_ret_t ret;
-        ret = file_exists(input_file);
-        if (ret != SSUSB_OK) {
-                return ret;
-        }
+        assert(buffer != NULL);
+        assert(len != NULL);
 
-        if ((file->stream = fopen(input_file, "rb+")) == NULL) {
-                return _errno_convert();
-        }
-
-        return SSUSB_OK;
-}
-
-ssusb_ret_t
-file_create(const char *output_file, file_io_t *file)
-{
-        ssusb_ret_t ret;
-        ret = file_exists(output_file);
-        if (ret != SSUSB_OK) {
-                return ret;
-        }
-
-        if ((file->stream = fopen(output_file, "wb+")) == NULL) {
-                return _errno_convert();
-        }
-
-        return ret;
-}
-
-void
-file_close(file_io_t *file)
-{
-        if (file == NULL) {
-                return;
-        }
-
-        if (file->stream != NULL) {
-                fclose(file->stream);
-                file->stream = NULL;
-        }
-
-        if (file->buffer != NULL) {
-                free(file->buffer);
-                file->buffer = NULL;
-        }
-
-        file->len = 0;
-}
-
-ssusb_ret_t
-file_read(file_io_t *file)
-{
         ssusb_ret_t ret;
         ret = SSUSB_OK;
 
-        int32_t len;
+        *buffer = NULL;
+        *len = 0;
+
+        ret = _file_exists(input_file);
+        if (ret != SSUSB_OK) {
+                return ret;
+        }
+
+        FILE *file;
+
+        if ((file = fopen(input_file, "rb+")) == NULL) {
+                return _errno_convert();
+        }
 
         /* Determine the size of file */
-        if ((fseek(file->stream, 0, SEEK_END)) < 0) {
+        if ((fseek(file, 0, SEEK_END)) < 0) {
                 ret = _errno_convert();
                 goto error;
         }
-        if ((len = ftell(file->stream)) < 0) {
+        long tell;
+        if ((tell = ftell(file)) < 0) {
                 ret = _errno_convert();
                 goto error;
         }
-        rewind(file->stream);
+        rewind(file);
 
-        if (len == 0) {
+        *len = tell;
+
+        if (*len == 0) {
                 ret = SSUSB_FILE_EMPTY;
                 goto error;
         }
 
-        uint8_t *buffer;
-        if ((buffer = malloc(len)) == NULL) {
+        if ((*buffer = malloc(*len)) == NULL) {
                 ret = SSUSB_INSUFFICIENT_MEMORY;
                 goto error;
         }
-        (void)memset(buffer, 0, len);
+        (void)memset(*buffer, 0, *len);
 
-        size_t read;
-        if ((read = fread(buffer, 1, len, file->stream)) != (size_t)len) {
-                ret = SSUSB_FILE_IO_ERROR;
-                goto error;
+        if ((fread(*buffer, 1, *len, file)) != *len) {
+                ret = _errno_convert();
         }
-
-        file->buffer = buffer;
-        file->len = len;
 
         return ret;
 
 error:
-        file_close(file);
+        fclose(file);
 
         return ret;
 }
 
 ssusb_ret_t
-file_write(file_io_t *file)
+file_write(const char *output_file, const void *buffer, size_t len)
 {
-        if ((fwrite(file->buffer, 1, file->len, file->stream)) != file->len) {
-                file_close(file);
-                return SSUSB_FILE_IO_ERROR;
+        assert(buffer != NULL);
+        assert(len != 0);
+
+        ssusb_ret_t ret;
+        ret = _file_exists(output_file);
+        if (ret != SSUSB_OK) {
+                return ret;
         }
 
-        return SSUSB_OK;
+        FILE *file;
+
+        if ((file = fopen(output_file, "wb+")) == NULL) {
+                return _errno_convert();
+        }
+
+        if ((fwrite(buffer, 1, len, file)) != len) {
+                ret = _errno_convert();
+        }
+
+        fclose(file);
+
+        return ret;
 }

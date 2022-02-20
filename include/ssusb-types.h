@@ -19,9 +19,6 @@ struct ssusb_driver {
 
 typedef enum {
         SSUSB_OK,
-        SSUSB_UNITITIALIZED,
-        SSUSB_ARG_NULL,
-        SSUSB_ARG_EMPTY_STRING,
 
         SSUSB_INSUFFICIENT_MEMORY,
 
@@ -34,6 +31,7 @@ typedef enum {
         SSUSB_DESELECT_DEINIT_ERROR,
 
         SSUSB_DEVICE_READ_ERROR,
+        SSUSB_DEVICE_WRITE_ERROR,
         SSUSB_DEVICE_DOWNLOAD_ERROR,
         SSUSB_DEVICE_UPLOAD_ERROR,
         SSUSB_DEVICE_EXECUTE_ERROR,
@@ -43,7 +41,6 @@ typedef enum {
         SSUSB_FILE_NOT_FILE,
         SSUSB_FILE_PERMISSION_ACCESS,
         SSUSB_FILE_EMPTY,
-        SSUSB_FILE_IO_ERROR,
         SSUSB_FILE_UNKNOWN_ERROR,
 } ssusb_ret_t;
 

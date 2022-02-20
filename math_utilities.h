@@ -8,7 +8,7 @@
 #ifndef _LIBSSUSB_MATH_UTILITIES_H_
 #define _LIBSSUSB_MATH_UTILITIES_H_
 
-#include <sys/cdefs.h>
+#include "cdefs.h"
 
 #ifndef min
 #define min(a, b)                                                              \

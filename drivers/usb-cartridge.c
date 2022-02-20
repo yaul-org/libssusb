@@ -99,7 +99,7 @@ _init(void)
 #define USB_READ_PACKET_SIZE  (64 * 1024)
 #define USB_WRITE_PACKET_SIZE (4 * 1024)
 #define USB_PAYLOAD(x)        ((x) - (((x) / 64) * 2))
-#define READ_PAYLOAD_SIZE     (USB_PAYLOAD(USB_READ_PACKET_SIZE))
+#define RING_BUFFER_SIZE     (USB_PAYLOAD(USB_READ_PACKET_SIZE))
 #define WRITE_PAYLOAD_SIZE    (USB_PAYLOAD(USB_WRITE_PACKET_SIZE))
 
         if ((_ftdi_error = ftdi_init(&_ftdi_ctx)) < 0) {
@@ -265,14 +265,14 @@ _poll(size_t *read)
 {
         _driver_error = SSUSB_DRIVER_OK;
 
-        static uint8_t read_buffer[READ_PAYLOAD_SIZE];
+        static uint8_t read_buffer[RING_BUFFER_SIZE];
 
-        (void)memset(read_buffer, 0, READ_PAYLOAD_SIZE);
+        (void)memset(read_buffer, 0, RING_BUFFER_SIZE);
 
         *read = 0;
 
         int amount;
-        if ((amount = ftdi_read_data(&_ftdi_ctx, read_buffer, READ_PAYLOAD_SIZE)) < 0) {
+        if ((amount = ftdi_read_data(&_ftdi_ctx, read_buffer, RING_BUFFER_SIZE)) < 0) {
                 _ftdi_error = SSUSB_DRIVER_DEVICE_ERROR;
                 return -1;
         }
