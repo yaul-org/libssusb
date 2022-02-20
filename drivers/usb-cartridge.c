@@ -77,7 +77,7 @@ static int _deinit(void);
 /* In x86_64-w64-mingw32/include/fcntl.h, there is a conflict with a previous
  * declaration */
 static int _usb_cart_read(void *buffer, size_t len);
-static int _usb_cart_send(const void *buffer, size_t len);
+static int _usb_cart_write(const void *buffer, size_t len);
 
 static int _upload_execute_buffer(const void *buffer, uint32_t base_address,
     size_t len, bool execute);
@@ -385,7 +385,7 @@ exit:
 }
 
 static int
-_usb_cart_send(const void *buffer, size_t len)
+_usb_cart_write(const void *buffer, size_t len)
 {
         DEBUG_PRINTF("Enter\n");
 
@@ -636,7 +636,7 @@ const ssusb_device_driver_t __device_usb_cartridge = {
         .fifo_free       = _fifo_free,
         .peek            = _peek,
         .read            = _usb_cart_read,
-        .send            = _usb_cart_send,
+        .write           = _usb_cart_write,
         .download_buffer = _download_buffer,
         .upload_buffer   = _upload_buffer,
         .execute_buffer  = _execute_buffer,

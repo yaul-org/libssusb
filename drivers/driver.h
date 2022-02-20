@@ -48,7 +48,7 @@ typedef struct {
 
         int (*poll)(size_t *read);
         int (*read)(void *buffer, size_t len);
-        int (*send)(const void *buffer, size_t len);
+        int (*write)(const void *buffer, size_t len);
         int (*download_buffer)(void *buffer, uint32_t base_address, size_t len);
         int (*upload_buffer)(const void *buffer, uint32_t base_address, size_t len);
         int (*execute_buffer)(const void *buffer, uint32_t base_address, size_t len);

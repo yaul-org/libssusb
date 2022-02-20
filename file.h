@@ -15,11 +15,13 @@
 
 typedef struct {
         FILE *stream;
+
         void *buffer;
         size_t len;
 } file_io_t;
 
 DLL_LOCAL void file_init(file_io_t *file);
+DLL_LOCAL ssusb_ret_t file_exists(const char *input_file);
 DLL_LOCAL ssusb_ret_t file_open(const char *input_file, file_io_t *file);
 DLL_LOCAL ssusb_ret_t file_create(const char *output_file, file_io_t *file);
 DLL_LOCAL void file_close(file_io_t *file);

@@ -13,7 +13,8 @@
 extern ssusb_ret_t ssusb_drivers_selected_get(const ssusb_device_driver_t **device);
 
 static ssusb_ret_t
-_upload_execute_file(const char *input_file, uint32_t base_address, bool execute)
+_upload_execute_file(const char *input_file, uint32_t base_address,
+    bool execute)
 {
         ssusb_ret_t ret;
 
@@ -68,6 +69,25 @@ ssusb_read(void *buffer, size_t len)
         }
 
         if ((driver->read(buffer, len)) < 0) {
+                return SSUSB_DEVICE_READ_ERROR;
+        }
+
+        return SSUSB_OK;
+}
+
+ssusb_ret_t
+ssusb_write(const void *buffer, size_t len)
+{
+        ssusb_ret_t ret;
+
+        const ssusb_device_driver_t *driver;
+        ret = ssusb_drivers_selected_get(&driver);
+
+        if (ret != SSUSB_OK) {
+                return ret;
+        }
+
+        if ((driver->write(buffer, len)) < 0) {
                 return SSUSB_DEVICE_READ_ERROR;
         }
 
