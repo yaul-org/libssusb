@@ -13,11 +13,11 @@
 
 #include "drivers/driver.h"
 
-/* extern const ssusb_device_driver_t __device_datalink; */
+extern const ssusb_device_driver_t __device_datalink;
 extern const ssusb_device_driver_t __device_usb_cartridge;
 
 static const ssusb_device_driver_t *_device_drivers[] = {
-        /* &__device_datalink, */
+        &__device_datalink,
         &__device_usb_cartridge,
         NULL
 };
@@ -173,7 +173,7 @@ _drivers_get(const char *driver_name)
         const ssusb_device_driver_t **device_driver =
             _device_drivers;
 
-        while (device_driver != NULL) {
+        while (*device_driver != NULL) {
                 if ((strncmp(driver_name, (*device_driver)->name, SSUSB_DRIVER_NAME_LEN)) == 0) {
                         return *device_driver;
                 }

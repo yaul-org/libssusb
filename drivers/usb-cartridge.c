@@ -41,6 +41,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <ftdi.h>
+
 #include "crc.h"
 #include "debug.h"
 #include "driver.h"
@@ -48,8 +50,6 @@
 #include "fifo.h"
 #include "math_utilities.h"
 #include "ring_buffer.h"
-
-#include <ftdi.h>
 
 #define RX_TIMEOUT      5000
 #define TX_TIMEOUT      1000
@@ -96,15 +96,15 @@ _init(void)
 {
         DEBUG_PRINTF("Enter\n");
 
-#define USB_READ_PACKET_SIZE    (64 * 1024)
-#define USB_WRITE_PACKET_SIZE   (4 * 1024)
-#define USB_PAYLOAD(x)          ((x) - (((x) / 64) * 2))
-#define READ_PAYLOAD_SIZE       (USB_PAYLOAD(USB_READ_PACKET_SIZE))
-#define WRITE_PAYLOAD_SIZE      (USB_PAYLOAD(USB_WRITE_PACKET_SIZE))
+#define USB_READ_PACKET_SIZE  (64 * 1024)
+#define USB_WRITE_PACKET_SIZE (4 * 1024)
+#define USB_PAYLOAD(x)        ((x) - (((x) / 64) * 2))
+#define READ_PAYLOAD_SIZE     (USB_PAYLOAD(USB_READ_PACKET_SIZE))
+#define WRITE_PAYLOAD_SIZE    (USB_PAYLOAD(USB_WRITE_PACKET_SIZE))
 
         if ((_ftdi_error = ftdi_init(&_ftdi_ctx)) < 0) {
                 DEBUG_PRINTF("ftdi_init()\n");
-                goto error;
+                return -1;
         }
         _ftdi_error = ftdi_usb_open(&_ftdi_ctx, I_VENDOR, I_PRODUCT);
         if (_ftdi_error < 0) {
@@ -140,6 +140,8 @@ error:
         if ((_ftdi_error = ftdi_usb_close(&_ftdi_ctx)) < 0) {
                 return -1;
         }
+
+        ftdi_deinit(&_ftdi_ctx);
 
         return -1;
 }
