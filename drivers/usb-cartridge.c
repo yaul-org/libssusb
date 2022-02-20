@@ -43,11 +43,11 @@
 
 #include <ftdi.h>
 
+#include "bftdi.h"
 #include "crc.h"
 #include "debug.h"
 #include "driver.h"
 #include "endianess.h"
-#include "fifo.h"
 #include "math_utilities.h"
 #include "ring_buffer.h"
 
@@ -68,23 +68,15 @@ typedef enum {
 } protocol_command_t;
 
 static ssusb_driver_error_t _driver_error = SSUSB_DRIVER_OK;
-static ring_buffer_t _read_ringbuffer;
-static struct ftdi_context _ftdi_ctx;
+static struct ftdi_context _ftdi_context;
 static int _ftdi_error = 0;
+static bftdi_t _bftdi;
 
 static int _init(void);
 static int _deinit(void);
 
-/* In x86_64-w64-mingw32/include/fcntl.h, there is a conflict with a previous
- * declaration */
-static int _usb_cart_read(void *buffer, size_t len);
-static int _usb_cart_write(const void *buffer, size_t len);
-
 static int _upload_execute_buffer(const void *buffer, uint32_t base_address,
     size_t len, bool execute);
-
-static int _device_read(void *buffer, size_t len, bool block);
-static int _device_write(const void *buffer, size_t len);
 
 /* Helpers */
 static int _command_send(protocol_command_t command, uint32_t address, size_t len);
@@ -99,49 +91,49 @@ _init(void)
 #define USB_READ_PACKET_SIZE  (64 * 1024)
 #define USB_WRITE_PACKET_SIZE (4 * 1024)
 #define USB_PAYLOAD(x)        ((x) - (((x) / 64) * 2))
-#define RING_BUFFER_SIZE     (USB_PAYLOAD(USB_READ_PACKET_SIZE))
+#define READ_PAYLOAD_SIZE     (USB_PAYLOAD(USB_READ_PACKET_SIZE))
 #define WRITE_PAYLOAD_SIZE    (USB_PAYLOAD(USB_WRITE_PACKET_SIZE))
 
-        if ((_ftdi_error = ftdi_init(&_ftdi_ctx)) < 0) {
+        if ((_ftdi_error = ftdi_init(&_ftdi_context)) < 0) {
                 DEBUG_PRINTF("ftdi_init()\n");
                 return -1;
         }
-        _ftdi_error = ftdi_usb_open(&_ftdi_ctx, I_VENDOR, I_PRODUCT);
+        _ftdi_error = ftdi_usb_open(&_ftdi_context, I_VENDOR, I_PRODUCT);
         if (_ftdi_error < 0) {
                 DEBUG_PRINTF("ftdi_usb_open()\n");
                 goto error;
         }
-        if ((_ftdi_error = ftdi_tcioflush(&_ftdi_ctx)) < 0) {
+        if ((_ftdi_error = ftdi_tcioflush(&_ftdi_context)) < 0) {
                 DEBUG_PRINTF("ftdi_tcioflush()\n");
                 goto error;
         }
-        if ((_ftdi_error = ftdi_read_data_set_chunksize(&_ftdi_ctx,
+        if ((_ftdi_error = ftdi_read_data_set_chunksize(&_ftdi_context,
                     USB_READ_PACKET_SIZE)) < 0) {
                 DEBUG_PRINTF("ftdi_read_data_set_chunksize()\n");
                 goto error;
         }
-        if ((_ftdi_error = ftdi_write_data_set_chunksize(&_ftdi_ctx,
+        if ((_ftdi_error = ftdi_write_data_set_chunksize(&_ftdi_context,
                     USB_WRITE_PACKET_SIZE)) < 0) {
                 DEBUG_PRINTF("ftdi_write_data_set_chunksize()\n");
                 goto error;
         }
-        if ((_ftdi_error = ftdi_set_bitmode(&_ftdi_ctx, 0x00, BITMODE_RESET)) < 0) {
+        if ((_ftdi_error = ftdi_set_bitmode(&_ftdi_context, 0x00, BITMODE_RESET)) < 0) {
                 DEBUG_PRINTF("ftdi_set_bitmode()\n");
                 goto error;
         }
 
-        ring_buffer_init(&_read_ringbuffer, USB_READ_PACKET_SIZE);
+        _bftdi = bftdi_create(&_ftdi_context);
 
         return 0;
 
 error:
         DEBUG_PRINTF("_ftdi_error: %i\n", _ftdi_error);
 
-        if ((_ftdi_error = ftdi_usb_close(&_ftdi_ctx)) < 0) {
+        if ((_ftdi_error = ftdi_usb_close(&_ftdi_context)) < 0) {
                 return -1;
         }
 
-        ftdi_deinit(&_ftdi_ctx);
+        ftdi_deinit(&_ftdi_context);
 
         return -1;
 }
@@ -154,96 +146,52 @@ _deinit(void)
         int exit_code;
         exit_code = 0;
 
-        if ((_ftdi_error = ftdi_tcioflush(&_ftdi_ctx)) < 0) {
+        if ((_ftdi_error = ftdi_tcioflush(&_ftdi_context)) < 0) {
                 exit_code = -1;
                 goto exit;
         }
 
-        if ((_ftdi_error = ftdi_usb_close(&_ftdi_ctx)) < 0) {
+        if ((_ftdi_error = ftdi_usb_close(&_ftdi_context)) < 0) {
                 exit_code = -1;
                 goto exit;
         }
 
 exit:
-        ring_buffer_deinit(&_read_ringbuffer);
+        bftdi_destroy(_bftdi);
 
-        ftdi_deinit(&_ftdi_ctx);
+        ftdi_deinit(&_ftdi_context);
 
         return exit_code;
+}
+
+static int
+_poll(size_t *read_len)
+{
+        return bftdi_poll(_bftdi, read_len);
+}
+
+static int
+_peek(size_t len, void *buffer, size_t *read_len)
+{
+        return bftdi_peek(_bftdi, len, buffer, read_len);
+}
+
+static int
+_device_read(void *buffer, size_t len)
+{
+        return bftdi_read(_bftdi, buffer, len);
+}
+
+static int
+_device_write(const void *buffer, size_t len)
+{
+        return bftdi_write(_bftdi, buffer, len);
 }
 
 static ssusb_driver_error_t
 _error(void)
 {
         return _driver_error;
-}
-
-static int
-_device_read(void *buffer, size_t len, bool block)
-{
-        DEBUG_PRINTF("Enter\n");
-        DEBUG_PRINTF("Request read of %zuB\n", len);
-
-        _driver_error = SSUSB_DRIVER_OK;
-
-        uint8_t *buffer_pos;
-        buffer_pos = buffer;
-
-        const ring_buffer_size_t ringbuffer_size =
-            ring_buffer_count(&_read_ringbuffer);
-        const uint32_t preread_amount = min(ringbuffer_size, len);
-
-        ring_buffer_dequeue_arr(&_read_ringbuffer, buffer_pos, preread_amount);
-
-        buffer_pos += preread_amount;
-
-        while (((uintptr_t)buffer_pos - (uintptr_t)buffer) < len) {
-                DEBUG_PRINTF("Call to ftdi_read_data(..., ..., %zu)\n", len);
-
-                int read_amount;
-                if ((read_amount = ftdi_read_data(&_ftdi_ctx, buffer_pos, len)) < 0) {
-                        _ftdi_error = read_amount;
-                        return -1;
-                }
-
-                buffer_pos += read_amount;
-
-                DEBUG_PRINTF("Read %iB\n", read_amount);
-
-                if (!block) {
-                        break;
-                }
-        }
-
-        DEBUG_PRINTF("%zuB read\n", (uintptr_t)buffer_pos - (uintptr_t)buffer);
-
-        return 0;
-}
-
-static int
-_device_write(const void *buffer, size_t len)
-{
-        DEBUG_PRINTF("Enter\n");
-        DEBUG_PRINTF("Writing %zuB\n", len);
-
-        _driver_error = SSUSB_DRIVER_OK;
-
-        uint32_t written;
-        written = 0;
-
-        while ((len - written) > 0) {
-                int amount;
-                if ((amount = ftdi_write_data(&_ftdi_ctx, buffer, len)) < 0) {
-                        _ftdi_error = amount;
-                        return -1;
-                }
-
-                written += amount;
-        }
-
-        DEBUG_PRINTF("%zuB written\n", len);
-
-        return 0;
 }
 
 static int
@@ -258,165 +206,6 @@ _upload_buffer(const void *buffer, uint32_t base_address, size_t len)
         DEBUG_PRINTF("Exit\n");
 
         return ret;
-}
-
-static int
-_poll(size_t *read)
-{
-        _driver_error = SSUSB_DRIVER_OK;
-
-        static uint8_t read_buffer[RING_BUFFER_SIZE];
-
-        (void)memset(read_buffer, 0, RING_BUFFER_SIZE);
-
-        *read = 0;
-
-        int amount;
-        if ((amount = ftdi_read_data(&_ftdi_ctx, read_buffer, RING_BUFFER_SIZE)) < 0) {
-                _ftdi_error = SSUSB_DRIVER_DEVICE_ERROR;
-                return -1;
-        }
-
-        ring_buffer_queue_arr(&_read_ringbuffer, read_buffer, amount);
-
-        *read = ring_buffer_count(&_read_ringbuffer);
-
-        return 0;
-}
-
-static int
-_fifo_alloc(fifo_t **fifo)
-{
-        _driver_error = SSUSB_DRIVER_OK;
-
-        *fifo = malloc(sizeof(fifo_t));
-        if (*fifo == NULL) {
-                _driver_error = SSUSB_DRIVER_INSUFFICIENT_MEMORY;
-                return -1;
-        }
-
-        (*fifo)->buffer = malloc(USB_READ_PACKET_SIZE);
-        if ((*fifo)->buffer == NULL) {
-                _driver_error = SSUSB_DRIVER_INSUFFICIENT_MEMORY;
-                return -1;
-        }
-
-        (void)memset((void *)(*fifo)->buffer, 0, USB_READ_PACKET_SIZE);
-
-        (*fifo)->size = 0;
-
-        return 0;
-}
-
-static int
-_fifo_free(fifo_t *fifo)
-{
-        _driver_error = SSUSB_DRIVER_OK;
-
-        if (fifo == NULL) {
-                _driver_error = SSUSB_DRIVER_PARAM_NULL;
-                return -1;
-        }
-
-        free((void *)fifo->buffer);
-
-        fifo->buffer = NULL;
-        fifo->size = 0;
-
-        free(fifo);
-
-        return 0;
-}
-
-static int
-_peek(fifo_t *fifo)
-{
-        _driver_error = SSUSB_DRIVER_OK;
-
-        if (fifo == NULL) {
-                _driver_error = SSUSB_DRIVER_PARAM_NULL;
-                return -1;
-        }
-
-        (void)memset((void *)fifo->buffer, 0, USB_READ_PACKET_SIZE);
-
-        const ring_buffer_size_t ringbuffer_size =
-            ring_buffer_count(&_read_ringbuffer);
-
-        for (int32_t i = ringbuffer_size - 1; i >= 0; i--) {
-                uint8_t * const buffer_pos = (uint8_t *)&fifo->buffer[i];
-
-                ring_buffer_peek(&_read_ringbuffer, buffer_pos, i);
-        }
-
-        fifo->size = ringbuffer_size;
-
-        return 0;
-}
-
-static int
-_usb_cart_read(void *buffer, size_t len)
-{
-        DEBUG_PRINTF("Enter\n");
-
-        int exit_code;
-        exit_code = 0;
-
-        _driver_error = SSUSB_DRIVER_OK;
-
-        /* Sanity check */
-        if (buffer == NULL) {
-                _driver_error = SSUSB_DRIVER_BAD_REQUEST;
-                goto error;
-        }
-
-        if ((_device_read(buffer, len, /* block = */ true)) < 0) {
-                goto error;
-        }
-
-        goto exit;
-
-error:
-        exit_code = -1;
-
-        /* (void)printf("ERROR: %i %s\n", __LINE__, _error_strings[_error]); */
-
-exit:
-        DEBUG_PRINTF("Exit\n");
-
-        return exit_code;
-}
-
-static int
-_usb_cart_write(const void *buffer, size_t len)
-{
-        DEBUG_PRINTF("Enter\n");
-
-        int exit_code;
-        exit_code = 0;
-
-        _driver_error = SSUSB_DRIVER_OK;
-
-        if (buffer == NULL) {
-                _driver_error = SSUSB_DRIVER_BAD_REQUEST;
-                goto error;
-        }
-
-        if ((_device_write(buffer, len)) < 0) {
-                goto error;
-        }
-
-        goto exit;
-
-error:
-        exit_code = -1;
-
-        /* (void)printf("ERROR: %i %s\n", __LINE__, _error_strings[_error]); */
-
-exit:
-        DEBUG_PRINTF("Exit\n");
-
-        return exit_code;
 }
 
 static int
@@ -444,7 +233,7 @@ _download_buffer(void *buffer, uint32_t base_address, size_t len)
                 goto error;
         }
 
-        if ((_device_read(buffer, len, true)) < 0) {
+        if ((_device_read(buffer, len)) < 0) {
                 goto error;
         }
 
@@ -456,8 +245,6 @@ _download_buffer(void *buffer, uint32_t base_address, size_t len)
 
 error:
         exit_code = -1;
-
-        /* (void)printf("ERROR: %i %s\n", __LINE__, _error_strings[_error]); */
 
 exit:
         DEBUG_PRINTF("Exit\n");
@@ -519,8 +306,6 @@ _upload_execute_buffer(const void *buffer, uint32_t base_address,
 
 error:
         exit_code = -1;
-
-        /* (void)printf("ERROR: %i %s\n", __LINE__, _error_strings[_error]); */
 
 exit:
         DEBUG_PRINTF("Exit\n");
@@ -588,7 +373,7 @@ _checksum_receive(const void *buffer, size_t len)
         const crc_t checksum = crc_calculate(buffer, len);
 
         uint8_t read_buffer;
-        if ((_device_read(&read_buffer, sizeof(read_buffer), true)) < 0) {
+        if ((_device_read(&read_buffer, sizeof(read_buffer))) < 0) {
                 return -1;
         }
 
@@ -616,7 +401,7 @@ _checksum_send(const void *buffer, size_t len)
         }
 
         uint8_t read_buffer;
-        if ((_device_read(&read_buffer, sizeof(read_buffer), true)) < 0) {
+        if ((_device_read(&read_buffer, sizeof(read_buffer))) < 0) {
                 return -1;
         }
 
@@ -635,11 +420,9 @@ const ssusb_device_driver_t __device_usb_cartridge = {
         .deinit          = _deinit,
         .error           = _error,
         .poll            = _poll,
-        .fifo_alloc      = _fifo_alloc,
-        .fifo_free       = _fifo_free,
         .peek            = _peek,
-        .read            = _usb_cart_read,
-        .write           = _usb_cart_write,
+        .read            = _device_read,
+        .write           = _device_write,
         .download_buffer = _download_buffer,
         .upload_buffer   = _upload_buffer,
         .execute_buffer  = _execute_buffer,

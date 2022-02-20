@@ -16,11 +16,11 @@
 
 #include <ftdi.h>
 
+#include "bftdi.h"
 #include "debug.h"
 #include "driver.h"
 #include "endianess.h"
 #include "math_utilities.h"
-#include "ring_buffer.h"
 
 #define RX_TIMEOUT      5000
 #define TX_TIMEOUT      1000
@@ -64,10 +64,10 @@ typedef struct {
         } packet;
 } device_rev_t;
 
-static ssusb_driver_error_t _driver_error = SSUSB_DRIVER_OK;
-static ring_buffer_t _read_ringbuffer;
+/* static ssusb_driver_error_t _driver_error = SSUSB_DRIVER_OK; */
 static struct ftdi_context _ftdi_ctx;
 static int _ftdi_error = 0;
+static bftdi_t _bftdi;
 static const device_rev_t *_device_rev = NULL;
 
 static const device_rev_t _device_rev_red = {
@@ -95,9 +95,6 @@ static int _init(const device_rev_t *device_rev);
 
 static int _deinit(void);
 static int _bluetooth_deinit(void);
-
-static int _datalink_read(void *buffer, size_t len, bool block);
-static int _datalink_write(const void *buffer, size_t len);
 
 static int _upload_execute_buffer(const void *buffer, uint32_t base_address,
     size_t len, bool execute);
@@ -160,7 +157,7 @@ _init(const device_rev_t *device_rev)
                 goto error;
         }
 
-        ring_buffer_init(&_read_ringbuffer, USB_READ_PACKET_SIZE);
+        _bftdi = bftdi_create(&_ftdi_ctx);
 
         return 0;
 
@@ -197,7 +194,7 @@ _deinit(void)
         }
 
 exit:
-        ring_buffer_deinit(&_read_ringbuffer);
+        bftdi_destroy(_bftdi);
 
         ftdi_deinit(&_ftdi_ctx);
 
@@ -208,74 +205,6 @@ static int
 _bluetooth_deinit(void)
 {
         assert(false && "Not yet implemented");
-}
-
-static int
-_datalink_read(void *buffer, size_t len, bool block)
-{
-        DEBUG_PRINTF("Enter\n");
-        DEBUG_PRINTF("Request read of %zuB\n", len);
-
-        _driver_error = SSUSB_DRIVER_OK;
-
-        uint8_t *buffer_pos;
-        buffer_pos = buffer;
-
-        const ring_buffer_size_t ringbuffer_size =
-            ring_buffer_count(&_read_ringbuffer);
-        const uint32_t preread_amount = min(ringbuffer_size, len);
-
-        ring_buffer_dequeue_arr(&_read_ringbuffer, buffer_pos, preread_amount);
-
-        buffer_pos += preread_amount;
-
-        while (((uintptr_t)buffer_pos - (uintptr_t)buffer) < len) {
-                DEBUG_PRINTF("Call to ftdi_read_data(..., ..., %zu)\n", len);
-
-                int read_amount;
-                if ((read_amount = ftdi_read_data(&_ftdi_ctx, buffer_pos, len)) < 0) {
-                        _ftdi_error = read_amount;
-                        return -1;
-                }
-
-                buffer_pos += read_amount;
-
-                DEBUG_PRINTF("Read %iB\n", read_amount);
-
-                if (!block) {
-                        break;
-                }
-        }
-
-        DEBUG_PRINTF("%zuB read\n", (uintptr_t)buffer_pos - (uintptr_t)buffer);
-
-        return 0;
-}
-
-static int
-_datalink_write(const void *buffer, size_t len)
-{
-        DEBUG_PRINTF("Enter\n");
-        DEBUG_PRINTF("Writing %zuB\n", len);
-
-        _driver_error = SSUSB_DRIVER_OK;
-
-        uint32_t written;
-        written = 0;
-
-        while ((len - written) > 0) {
-                int amount;
-                if ((amount = ftdi_write_data(&_ftdi_ctx, buffer, len)) < 0) {
-                        _ftdi_error = amount;
-                        return -1;
-                }
-
-                written += amount;
-        }
-
-        DEBUG_PRINTF("%zuB written\n", len);
-
-        return 0;
 }
 
 static int
@@ -290,6 +219,30 @@ _upload_buffer(const void *buffer, uint32_t base_address, size_t len)
         DEBUG_PRINTF("Exit\n");
 
         return ret;
+}
+
+static int
+_poll(size_t *read_len)
+{
+        return bftdi_poll(_bftdi, read_len);
+}
+
+static int
+_peek(size_t len, void *buffer, size_t *read_len)
+{
+        return bftdi_peek(_bftdi, len, buffer, read_len);
+}
+
+static int
+_device_read(void *buffer, size_t len)
+{
+        return bftdi_read(_bftdi, buffer, len);
+}
+
+static int
+_device_write(const void *buffer, size_t len)
+{
+        return bftdi_write(_bftdi, buffer, len);
 }
 
 static int
@@ -449,14 +402,14 @@ _download_buffer(void *buffer, uint32_t base_address, size_t len)
                 write_buffer[8] = _packet_checksum(write_buffer,
                     _device_rev->packet.header_size - 1);
 
-                if ((_datalink_write(write_buffer, _device_rev->packet.header_size)) < 0) {
+                if ((_device_write(write_buffer, _device_rev->packet.header_size)) < 0) {
                         /* DEBUG_PRINTF("datalink_error = %s\n", */
                         /*     datalink_error_strings[datalink_error]); */
                         goto error;
                 }
 
                 memset(read_buffer, 0x00, _device_rev->packet.total_size);
-                if ((_datalink_read(read_buffer, _device_rev->packet.header_size + write_buffer[7], /* block = */ true)) < 0) {
+                if ((_device_read(read_buffer, _device_rev->packet.header_size + write_buffer[7])) < 0) {
                         /* DEBUG_PRINTF("datalink_error = %s\n", */
                         /*     datalink_error_strings[datalink_error]); */
                         goto error;
@@ -591,14 +544,14 @@ _upload_execute_buffer(const void *buffer, uint32_t base_address,
                                 (_device_rev->packet.header_size + transfer_len) - 1);
                 }
 
-                if ((_datalink_write(write_buffer, _device_rev->packet.header_size + transfer_len)) < 0) {
+                if ((_device_write(write_buffer, _device_rev->packet.header_size + transfer_len)) < 0) {
                         /* DEBUG_PRINTF("datalink_error = %s\n", */
                         /*     datalink_error_strings[datalink_error]); */
                         goto error;
                 }
 
                 memset(read_buffer, 0x00, _device_rev->packet.total_size);
-                if ((_datalink_read(read_buffer, _device_rev->packet.header_size, /* block = */ true)) < 0) {
+                if ((_device_read(read_buffer, _device_rev->packet.header_size)) < 0) {
                         /* DEBUG_PRINTF("datalink_error = %s\n", */
                         /*     datalink_error_strings[datalink_error]); */
                         goto error;
@@ -755,12 +708,10 @@ const ssusb_device_driver_t __device_datalink_red = {
         .init            = _red_init,
         .deinit          = _deinit,
         /* .error           = _error, */
-        /* .poll            = _poll, */
-        /* .fifo_alloc      = _fifo_alloc, */
-        /* .fifo_free       = _fifo_free, */
-        /* .peek            = _peek, */
-        /* .read            = _datalink_read, */
-        /* .write           = _datalink_write, */
+        .poll            = _poll,
+        .peek            = _peek,
+        .read            = _device_read,
+        .write           = _device_write,
         .download_buffer = _download_buffer,
         .upload_buffer   = _upload_buffer,
         .execute_buffer  = _execute_buffer,
@@ -772,12 +723,10 @@ const ssusb_device_driver_t __device_datalink_green = {
         .init            = _green_init,
         .deinit          = _deinit,
         /* .error           = _error, */
-        /* .poll            = _poll, */
-        /* .fifo_alloc      = _fifo_alloc, */
-        /* .fifo_free       = _fifo_free, */
-        /* .peek            = _peek, */
-        /* .read            = _datalink_read, */
-        /* .write           = _datalink_write, */
+        .poll            = _poll,
+        .peek            = _peek,
+        .read            = _device_read,
+        .write           = _device_write,
         .download_buffer = _download_buffer,
         .upload_buffer   = _upload_buffer,
         .execute_buffer  = _execute_buffer,
@@ -789,12 +738,10 @@ const ssusb_device_driver_t __device_datalink_bluetooth = {
         .init            = _bluetooth_init,
         .deinit          = _bluetooth_deinit,
         /* .error           = _error, */
-        /* .poll            = _poll, */
-        /* .fifo_alloc      = _fifo_alloc, */
-        /* .fifo_free       = _fifo_free, */
-        /* .peek            = _peek, */
-        /* .read            = _datalink_read, */
-        /* .write           = _datalink_write, */
+        .poll            = _poll,
+        .peek            = _peek,
+        .read            = _device_read,
+        .write           = _device_write,
         .download_buffer = _download_buffer,
         .upload_buffer   = _upload_buffer,
         .execute_buffer  = _execute_buffer,

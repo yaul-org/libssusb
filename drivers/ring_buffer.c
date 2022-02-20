@@ -1,6 +1,6 @@
 /*
- * The MIT License (MIT)
  * Copyright (c) 2014 Anders Kalør
+ * MIT License (MIT).
  */
 
 #include <stdlib.h>
@@ -12,21 +12,26 @@
  * Implementation of ring buffer functions.
  */
 
-void
+int
 ring_buffer_init(ring_buffer_t *buffer, size_t size)
 {
         if (buffer == NULL) {
-                return;
+                return -1;
         }
 
         if (size > 0) {
                 buffer->buffer = malloc(size);
+                if (buffer->buffer == NULL) {
+                        return -2;
+                }
         }
 
         buffer->buffer_size = size;
 
         buffer->tail_index = 0;
         buffer->head_index = 0;
+
+        return 0;
 }
 
 void
@@ -46,10 +51,10 @@ ring_buffer_deinit(ring_buffer_t *buffer)
 }
 
 void
-ring_buffer_queue(ring_buffer_t *buffer, unsigned char data)
+ring_buffer_queue(ring_buffer_t *buffer, uint8_t data)
 {
         /* Is buffer full? */
-        if(ring_buffer_is_full(buffer)) {
+        if(ring_buffer_full(buffer)) {
                 /* Is going to overwrite the oldest byte */
                 /* Increase tail index */
                 buffer->tail_index = ((buffer->tail_index + 1) & ring_buffer_mask(buffer));
@@ -61,7 +66,7 @@ ring_buffer_queue(ring_buffer_t *buffer, unsigned char data)
 }
 
 void
-ring_buffer_queue_arr(ring_buffer_t *buffer, const unsigned char *data, ring_buffer_size_t size)
+ring_buffer_array_queue(ring_buffer_t *buffer, const uint8_t *data, ring_buffer_size_t size)
 {
         /* Add bytes; one by one */
         ring_buffer_size_t i;
@@ -71,9 +76,9 @@ ring_buffer_queue_arr(ring_buffer_t *buffer, const unsigned char *data, ring_buf
 }
 
 uint8_t
-ring_buffer_dequeue(ring_buffer_t *buffer, unsigned char *data)
+ring_buffer_dequeue(ring_buffer_t *buffer, uint8_t *data)
 {
-        if(ring_buffer_is_empty(buffer)) {
+        if(ring_buffer_empty(buffer)) {
                 /* No items */
                 return 0;
         }
@@ -84,14 +89,14 @@ ring_buffer_dequeue(ring_buffer_t *buffer, unsigned char *data)
 }
 
 ring_buffer_size_t
-ring_buffer_dequeue_arr(ring_buffer_t *buffer, unsigned char *data, ring_buffer_size_t len)
+ring_buffer_array_dequeue(ring_buffer_t *buffer, uint8_t *data, ring_buffer_size_t len)
 {
-        if(ring_buffer_is_empty(buffer)) {
+        if(ring_buffer_empty(buffer)) {
                 /* No items */
                 return 0;
         }
 
-        unsigned char *data_ptr = data;
+        uint8_t *data_ptr = data;
         ring_buffer_size_t cnt = 0;
         while((cnt < len) && ring_buffer_dequeue(buffer, data_ptr)) {
                 cnt++;
@@ -101,9 +106,9 @@ ring_buffer_dequeue_arr(ring_buffer_t *buffer, unsigned char *data, ring_buffer_
 }
 
 uint8_t
-ring_buffer_peek(ring_buffer_t *buffer, unsigned char *data, ring_buffer_size_t index)
+ring_buffer_peek(ring_buffer_t *buffer, uint8_t *data, ring_buffer_size_t index)
 {
-        if(index >= ring_buffer_count(buffer)) {
+        if(index >= ring_buffer_size(buffer)) {
                 /* No items at index */
                 return 0;
         }
@@ -114,6 +119,6 @@ ring_buffer_peek(ring_buffer_t *buffer, unsigned char *data, ring_buffer_size_t 
         return 1;
 }
 
-extern inline uint8_t ring_buffer_is_empty(ring_buffer_t *buffer);
-extern inline uint8_t ring_buffer_is_full(ring_buffer_t *buffer);
-extern inline ring_buffer_size_t ring_buffer_count(ring_buffer_t *buffer);
+extern inline uint8_t ring_buffer_empty(ring_buffer_t *buffer);
+extern inline uint8_t ring_buffer_full(ring_buffer_t *buffer);
+extern inline ring_buffer_size_t ring_buffer_size(ring_buffer_t *buffer);
