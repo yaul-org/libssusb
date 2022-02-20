@@ -16,7 +16,7 @@
 
 #include "debug.h"
 #include "driver.h"
-#include "shared.h"
+#include "endianess.h"
 
 #define RX_TIMEOUT      5000
 #define TX_TIMEOUT      1000

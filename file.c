@@ -6,7 +6,7 @@
 #include <sys/stat.h>
 
 #include "file.h"
-#include "drivers/shared.h" // XXX: FIX
+#include "math_utilities.h"
 
 static ssusb_ret_t
 _errno_convert(void)

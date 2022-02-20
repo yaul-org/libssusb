@@ -41,12 +41,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "crc.h"
 #include "debug.h"
 #include "driver.h"
-#include "shared.h"
-#include "crc.h"
-#include "ring_buffer.h"
+#include "endianess.h"
 #include "fifo.h"
+#include "math_utilities.h"
+#include "ring_buffer.h"
 
 #include <ftdi.h>
 
