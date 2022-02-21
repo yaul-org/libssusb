@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <libusb.h>
+
 #include "bftdi.h"
 #include "cdefs.h"
 #include "debug.h"
@@ -25,7 +27,37 @@ struct bftdi {
 
 static int _device_read(bftdi_t bftdi, void *buffer, size_t len, bool block, size_t *read_len);
 static int _device_write(bftdi_t bftdi, const void *buffer, size_t len, size_t *write_len);
+
+int
+ftdi_usb_get_product_string(struct ftdi_context *ftdi, char *product, size_t product_len)
+{
+        struct libusb_device * const usb_dev = libusb_get_device(ftdi->usb_dev);
 
+        return ftdi_usb_get_strings2(ftdi,
+            usb_dev,
+            NULL,
+            0,
+            product,
+            product_len,
+            NULL,
+            0);
+}
+
+int
+ftdi_usb_get_serial_string(struct ftdi_context *ftdi, char *serial, size_t serial_len)
+{
+        struct libusb_device * const usb_dev = libusb_get_device(ftdi->usb_dev);
+
+        return ftdi_usb_get_strings2(ftdi,
+            usb_dev,
+            NULL,
+            0,
+            NULL,
+            0,
+            serial,
+            serial_len);
+}
+
 bftdi_t
 bftdi_create(struct ftdi_context *context)
 {
@@ -181,6 +213,7 @@ _device_write(bftdi_t bftdi, const void *buffer, size_t len, size_t *write_len)
         while ((len - written) > 0) {
                 int write;
                 if ((write = ftdi_write_data(_bftdi->context, buffer, len)) < 0) {
+                        DEBUG_PRINTF("write_error: %s\n", ftdi_get_error_string(_bftdi->context));
                         return -1;
                 }
 

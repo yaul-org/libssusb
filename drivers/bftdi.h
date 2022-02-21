@@ -24,4 +24,7 @@ DLL_LOCAL int bftdi_peek(bftdi_t bftdi, size_t len, void *buffer, size_t *read_l
 DLL_LOCAL int bftdi_read(bftdi_t bftdi, void *buffer, size_t len);
 DLL_LOCAL int bftdi_write(bftdi_t bftdi, const void *buffer, size_t len);
 
+int ftdi_usb_get_product_string(struct ftdi_context *ftdi, char *product, size_t product_len);
+int ftdi_usb_get_serial_string(struct ftdi_context *ftdi, char *serial, size_t serial_len);
+
 #endif /* !_LIBSSUSB_BFTDI_H_ */

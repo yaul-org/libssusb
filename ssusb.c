@@ -20,10 +20,10 @@ extern const ssusb_device_driver_t __device_datalink_bluetooth;
 extern const ssusb_device_driver_t __device_usb_cartridge;
 
 static const ssusb_device_driver_t *_device_drivers[] = {
-        &__device_datalink_red,
-        &__device_datalink_green,
-        &__device_datalink_bluetooth,
         &__device_usb_cartridge,
+        &__device_datalink_green,
+        &__device_datalink_red,
+        &__device_datalink_bluetooth,
         NULL
 };
 
@@ -106,11 +106,11 @@ ssusb_drivers_select(const char *driver_name)
         if ((driver_name == NULL) || (*driver_name == '\0')) {
                 return SSUSB_SELECT_INVALID_NAME;
         }
+        ssusb_ret_t ret;
 
-        ssusb_ret_t deselect_ret = ssusb_drivers_deselect();
-
-        if (deselect_ret != SSUSB_OK) {
-                return deselect_ret;
+        ret = ssusb_drivers_deselect();
+        if (ret != SSUSB_OK) {
+                return ret;
         }
 
         const ssusb_device_driver_t * const select_driver =
@@ -120,11 +120,11 @@ ssusb_drivers_select(const char *driver_name)
                 return SSUSB_SELECT_NOT_FOUND;
         }
 
-        _device_driver = select_driver;
-
-        if ((_device_driver->init()) != 0) {
+        if ((select_driver->init()) != 0) {
                 return SSUSB_SELECT_INIT_ERROR;
         }
+
+        _device_driver = select_driver;
 
         return SSUSB_OK;
 }

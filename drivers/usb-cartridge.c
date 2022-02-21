@@ -54,9 +54,11 @@
 #define RX_TIMEOUT      5000
 #define TX_TIMEOUT      1000
 
-#define I_VENDOR        0x0403
-#define I_PRODUCT       0x6001
-#define I_SERIAL        "AL00P4JX"
+#define I_VENDOR         0x0403
+#define I_PRODUCT        0x6001
+#define I_PRODUCT_STRING "FT245R USB FIFO"
+#define I_SERIAL1        "AL00P4JX"
+#define I_SERIAL2        "AI05393Z"
 
 typedef enum {
         CMD_DOWNLOAD = 1,
@@ -82,6 +84,8 @@ static int _upload_execute_buffer(const void *buffer, uint32_t base_address,
 static int _command_send(protocol_command_t command, uint32_t address, size_t len);
 static int _checksum_receive(const void *buffer, size_t len);
 static int _checksum_send(const void *buffer, size_t len);
+
+#include <libusb.h>
 
 static int
 _init(void)
@@ -122,12 +126,22 @@ _init(void)
                 goto error;
         }
 
+        char product[sizeof(I_PRODUCT_STRING) + 1];
+
+        _ftdi_error =
+            ftdi_usb_get_product_string(&_ftdi_context, product, sizeof(product));
+
+        if ((strncmp(product, I_PRODUCT_STRING, sizeof(product))) != 0) {
+                /* XXX: Mismatched product */
+                goto error;
+        }
+
         _bftdi = bftdi_create(&_ftdi_context);
 
         return 0;
 
 error:
-        DEBUG_PRINTF("_ftdi_error: %i\n", _ftdi_error);
+        DEBUG_PRINTF("_ftdi_error: %i -> %s\n", _ftdi_error, ftdi_get_error_string(&_ftdi_context));
 
         if ((_ftdi_error = ftdi_usb_close(&_ftdi_context)) < 0) {
                 return -1;

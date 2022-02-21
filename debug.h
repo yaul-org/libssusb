@@ -13,7 +13,8 @@
 #include <stdbool.h>
 
 #define DEBUG_PRINTF(fmt, ...) do {                                            \
-        (void)fprintf(stderr, "%s():L%i:" " " fmt, __func__, __LINE__,         \
+        (void)fprintf(stderr, "%s():%s:L%i:" " " fmt,                          \
+            __func__, __FILE__, __LINE__,                                      \
             ##__VA_ARGS__);                                                    \
         (void)fflush(stderr);                                                  \
 } while(false)
