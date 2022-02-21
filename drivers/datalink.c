@@ -162,8 +162,8 @@ _init(const device_rev_t *device_rev)
                 DEBUG_PRINTF("ftdi_usb_open()\n");
                 goto error;
         }
-        if ((_device_match()) < 0) {
-                DEBUG_PRINTF("_device_match()\n");
+        if ((ftdi_usb_match_product(&_ftdi_context, I_PRODUCT_STRING)) < 0) {
+                DEBUG_PRINTF("ftdi_usb_match_product()\n");
                 goto error;
         }
         if ((_ftdi_error = ftdi_set_baudrate(&_ftdi_context, _device_rev->baud_rate)) < 0) {
@@ -233,21 +233,6 @@ _bluetooth_deinit(void)
         assert(false && "Not yet implemented");
 
         return -1;
-}
-
-static int
-_device_match(void)
-{
-        char product[sizeof(I_PRODUCT_STRING) + 1];
-
-        _ftdi_error =
-            ftdi_usb_get_product_string(&_ftdi_context, product, sizeof(product));
-
-        if ((strncmp(product, I_PRODUCT_STRING, sizeof(product))) != 0) {
-                return -1;
-        }
-
-        return 0;
 }
 
 static int

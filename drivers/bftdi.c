@@ -58,6 +58,24 @@ ftdi_usb_get_serial_string(struct ftdi_context *ftdi, char *serial, size_t seria
             serial_len);
 }
 
+int
+ftdi_usb_match_product(struct ftdi_context *ftdi, const char *product)
+{
+        char buffer[256];
+
+        int ret = ftdi_usb_get_product_string(ftdi, buffer, sizeof(buffer));
+        if (ret < 0) {
+                return ret;
+        }
+
+        if ((strncmp(buffer, product, strlen(product))) != 0) {
+                return -14; /* No match */
+        }
+
+        return 0;
+}
+
+
 bftdi_t
 bftdi_create(struct ftdi_context *context)
 {
