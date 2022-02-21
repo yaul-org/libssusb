@@ -72,6 +72,8 @@ typedef struct {
                 uint32_t header_size;
                 uint32_t data_size;
                 uint32_t total_size;
+                const uint8_t *response_error;
+                const uint8_t *response_send;
         } packet;
 } device_rev_t;
 
@@ -80,21 +82,69 @@ static struct ftdi_context _ftdi_context;
 static int _ftdi_error = 0;
 static const device_rev_t *_device_rev = NULL;
 
+static const uint8_t _red_packet_response_error[PACKET_REV_RED_HEADER_SIZE] = {
+        PACKET_HEADER_RECEIVE,
+        0x07,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x07
+};
+
+static const uint8_t _green_packet_response_error[PACKET_REV_GREEN_HEADER_SIZE] = {
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+};
+
+static const uint8_t _red_packet_response_send[PACKET_REV_RED_HEADER_SIZE] = {
+        PACKET_HEADER_RECEIVE,
+        0x07,
+        0xFF,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x06
+};
+
+static const uint8_t _green_packet_response_send[PACKET_REV_GREEN_HEADER_SIZE] = {
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00
+};
+
 static const device_rev_t _device_rev_red = {
         .baud_rate = REV_RED_BAUD_RATE,
         .packet = {
-                .header_size = PACKET_REV_RED_HEADER_SIZE,
-                .data_size   = PACKET_REV_RED_DATA_SIZE,
-                .total_size  = PACKET_REV_RED_TOTAL_SIZE
+                .header_size    = PACKET_REV_RED_HEADER_SIZE,
+                .data_size      = PACKET_REV_RED_DATA_SIZE,
+                .total_size     = PACKET_REV_RED_TOTAL_SIZE,
+                .response_error = _red_packet_response_error,
+                .response_send  = _red_packet_response_send
         }
 };
 
 static const device_rev_t _device_rev_green = {
         .baud_rate = REV_GREEN_BAUD_RATE,
         .packet = {
-                .header_size = PACKET_REV_GREEN_HEADER_SIZE,
-                .data_size   = PACKET_REV_GREEN_DATA_SIZE,
-                .total_size  = PACKET_REV_GREEN_TOTAL_SIZE
+                .header_size    = PACKET_REV_GREEN_HEADER_SIZE,
+                .data_size      = PACKET_REV_GREEN_DATA_SIZE,
+                .total_size     = PACKET_REV_GREEN_TOTAL_SIZE,
+                .response_error = _green_packet_response_error,
+                .response_send  = _green_packet_response_send
         }
 };
 
@@ -115,10 +165,10 @@ static int _device_write(const void *buffer, size_t len);
 static int _upload_execute_buffer(const void *buffer, uint32_t base_address,
     size_t len, bool execute);
 
-static int _packet_check(const uint8_t *, packet_response_type_t response_type);
+static int _packet_receive_check(const uint8_t *, packet_response_type_t response_type);
 
 /* Helpers */
-static uint8_t _packet_checksum(const uint8_t *, uint32_t);
+static uint8_t _packet_checksum_generate(const uint8_t *buffer, uint32_t len);
 
 static int
 _red_init(void)
@@ -256,7 +306,7 @@ _device_revision_test(void)
                 return -1;
         }
 
-        (void)memset(read_buffer, 0x00, sizeof(read_buffer));
+        (void)memset(read_buffer, 0, sizeof(read_buffer));
 
         for (int tries = DEVICE_TEST_TRIES; ; tries--) {
                 size_t read_len;
@@ -283,7 +333,7 @@ _device_revision_test(void)
                 return -1;
         }
 
-        if ((_packet_check(read_buffer, PACKET_RESPONSE_TYPE_TEST)) < 0) {
+        if ((_packet_receive_check(read_buffer, PACKET_RESPONSE_TYPE_TEST)) < 0) {
                 return -1;
         }
 
@@ -340,59 +390,54 @@ _download_buffer(void *buffer, uint32_t base_address, size_t len)
 
         /* Sanity check */
         if (buffer == NULL) {
-                /* datalink_error = DATALINK_BAD_REQUEST; */
                 return -1;
         }
 
         if (base_address == 0x00000000) {
-                /* datalink_error = DATALINK_BAD_REQUEST; */
                 return -1;
         }
 
         if (len <= 1) {
-                /* datalink_error = DATALINK_BAD_REQUEST; */
                 return -1;
         }
 
         int exit_code;
         exit_code = 0;
 
-        /* datalink_error = DATALINK_OK; */
-
         uint8_t buffer_first[] = {
                 PACKET_HEADER_SEND,
                 0x07,
                 PACKET_TYPE_RECEIVE_FIRST,
-                0, /* MSB address */
-                0, /* 02 address */
-                0, /* 01 address */
-                0, /* LSB address */
-                0, /* Datalink */
-                0 /* Checksum */
+                0x00, /* MSB address */
+                0x00, /* 02 address */
+                0x00, /* 01 address */
+                0x00, /* LSB address */
+                0x00, /* Datalink */
+                0x00  /* Checksum */
         };
 
         uint8_t buffer_middle[] = {
                 PACKET_HEADER_SEND,
                 0x07,
                 PACKET_TYPE_RECEIVE_MIDDLE,
-                0, /* MSB address */
-                0, /* 02 address */
-                0, /* 01 address */
-                0, /* LSB address */
-                0, /* Datalink */
-                0 /* Checksum */
+                0x00, /* MSB address */
+                0x00, /* 02 address */
+                0x00, /* 01 address */
+                0x00, /* LSB address */
+                0x00, /* Datalink */
+                0x00  /* Checksum */
         };
 
         uint8_t buffer_final[] = {
                 PACKET_HEADER_SEND,
                 0x07,
                 PACKET_TYPE_RECEIVE_FINAL,
-                0, /* MSB address */
-                0, /* 02 address */
-                0, /* 01 address */
-                0, /* LSB address */
-                0, /* Length */
-                0 /* Checksum */
+                0x00, /* MSB address */
+                0x00, /* 02 address */
+                0x00, /* 01 address */
+                0x00, /* LSB address */
+                0x00, /* Length */
+                0x00  /* Checksum */
         };
 
         uint8_t read_buffer[_device_rev->packet.total_size];
@@ -428,8 +473,7 @@ _download_buffer(void *buffer, uint32_t base_address, size_t len)
                         } else if (tier_3) {
                                 write_buffer[7] = _device_rev->packet.data_size;
                                 /* The number of middle packets to send */
-                                count = (len - _device_rev->packet.data_size - 1) /
-                                    _device_rev->packet.data_size;
+                                count = (len - _device_rev->packet.data_size - 1) / _device_rev->packet.data_size;
 
                                 state = STATE_RECEIVE_MIDDLE;
                         }
@@ -457,11 +501,8 @@ _download_buffer(void *buffer, uint32_t base_address, size_t len)
                         } else if (tier_2) {
                                 write_buffer[7] = len - _device_rev->packet.data_size;
                         } else if (tier_3) {
-                                write_buffer[7] = (len - _device_rev->packet.data_size) %
-                                    _device_rev->packet.data_size;
-                                write_buffer[7] = (write_buffer[7] == 0)
-                                    ? _device_rev->packet.data_size
-                                    : write_buffer[7];
+                                write_buffer[7] = (len - _device_rev->packet.data_size) % _device_rev->packet.data_size;
+                                write_buffer[7] = (write_buffer[7] == 0) ? _device_rev->packet.data_size : write_buffer[7];
                         }
 
                         state = STATE_FINISH;
@@ -474,26 +515,19 @@ _download_buffer(void *buffer, uint32_t base_address, size_t len)
                 write_buffer[4] = ADDRESS_02(address);
                 write_buffer[5] = ADDRESS_01(address);
                 write_buffer[6] = ADDRESS_LSB(address);
-
-                write_buffer[8] = _packet_checksum(write_buffer,
+                write_buffer[8] = _packet_checksum_generate(write_buffer,
                     _device_rev->packet.header_size - 1);
 
                 if ((_device_write(write_buffer, _device_rev->packet.header_size)) < 0) {
-                        /* DEBUG_PRINTF("datalink_error = %s\n", */
-                        /*     datalink_error_strings[datalink_error]); */
                         goto error;
                 }
 
-                (void)memset(read_buffer, 0x00, _device_rev->packet.total_size);
+                (void)memset(read_buffer, 0, _device_rev->packet.total_size);
                 if ((_device_read(read_buffer, _device_rev->packet.header_size + write_buffer[7])) < 0) {
-                        /* DEBUG_PRINTF("datalink_error = %s\n", */
-                        /*     datalink_error_strings[datalink_error]); */
                         goto error;
                 }
 
-                if ((_packet_check(read_buffer, PACKET_RESPONSE_TYPE_RECEIVE)) < 0) {
-                        /* DEBUG_PRINTF("datalink_error = %s\n", */
-                        /*     datalink_error_strings[datalink_error]); */
+                if ((_packet_receive_check(read_buffer, PACKET_RESPONSE_TYPE_RECEIVE)) < 0) {
                         goto error;
                 }
 
@@ -536,16 +570,12 @@ _upload_execute_buffer(const void *buffer, uint32_t base_address,
         int exit_code;
         exit_code = 0;
 
-        /* datalink_error = DATALINK_OK; */
-
         /* Sanity check */
         if (buffer == NULL) {
-                /* datalink_error = DATALINK_BAD_REQUEST; */
                 return -1;
         }
 
         if (base_address == 0x00000000) {
-                /* datalink_error = DATALINK_BAD_REQUEST; */
                 return -1;
         }
 
@@ -559,7 +589,7 @@ _upload_execute_buffer(const void *buffer, uint32_t base_address,
         address = base_address;
 
         uint8_t packet_buffer[_device_rev->packet.total_size];
-        (void)memset(packet_buffer, 0x00, _device_rev->packet.total_size);
+        (void)memset(packet_buffer, 0, _device_rev->packet.total_size);
         packet_buffer[0] = PACKET_HEADER_SEND;
         packet_buffer[1] = 7 + 2;
         packet_buffer[2] = (execute) ? PACKET_TYPE_SEND_EXECUTE : PACKET_TYPE_SEND;
@@ -571,7 +601,7 @@ _upload_execute_buffer(const void *buffer, uint32_t base_address,
         (void)memcpy(&packet_buffer[8], buffer_pos, 2);
         buffer_pos += 2;
         packet_buffer[_device_rev->packet.header_size + 2 - 1] =
-            _packet_checksum(packet_buffer, (_device_rev->packet.header_size + 2) - 1);
+            _packet_checksum_generate(packet_buffer, (_device_rev->packet.header_size + 2) - 1);
 
         len -= 2;
         address += 2;
@@ -596,7 +626,7 @@ _upload_execute_buffer(const void *buffer, uint32_t base_address,
                 } else {
                         write_buffer = tmp_buffer;
 
-                        (void)memset(write_buffer, 0x00, _device_rev->packet.total_size);
+                        (void)memset(write_buffer, 0, _device_rev->packet.total_size);
                         write_buffer[0] = PACKET_HEADER_SEND;
                         write_buffer[1] = (7 + transfer_len) > ((int32_t)_device_rev->packet.total_size - 2)
                             ? (int32_t)_device_rev->packet.total_size - 2
@@ -610,7 +640,7 @@ _upload_execute_buffer(const void *buffer, uint32_t base_address,
                         (void)memcpy(&write_buffer[8], buffer_pos, transfer_len);
                         buffer_pos += transfer_len;
                         write_buffer[_device_rev->packet.header_size + transfer_len - 1] =
-                            _packet_checksum(write_buffer,
+                            _packet_checksum_generate(write_buffer,
                                 (_device_rev->packet.header_size + transfer_len) - 1);
                 }
 
@@ -619,13 +649,13 @@ _upload_execute_buffer(const void *buffer, uint32_t base_address,
                         goto error;
                 }
 
-                (void)memset(read_buffer, 0x00, _device_rev->packet.total_size);
+                (void)memset(read_buffer, 0, _device_rev->packet.total_size);
                 if ((_device_read(read_buffer, _device_rev->packet.header_size)) < 0) {
                         DEBUG_PRINTF("_device_read error\n");
                         goto error;
                 }
 
-                if ((_packet_check(read_buffer, PACKET_RESPONSE_TYPE_SEND)) < 0) {
+                if ((_packet_receive_check(read_buffer, PACKET_RESPONSE_TYPE_SEND)) < 0) {
                         DEBUG_PRINTF("_packet_check error\n");
                         goto error;
                 }
@@ -635,11 +665,10 @@ _upload_execute_buffer(const void *buffer, uint32_t base_address,
         } while ((int32_t)len >= 0);
 
         if ((uintptr_t)base_buffer != (uintptr_t)(buffer_pos - base_len)) {
-                DEBUG_PRINTF("base_buffer=%p != buffer_pos-len=%p\n",
+                DEBUG_PRINTF("base_buffer=%p != (buffer_pos-len)=%p\n",
                     (void *)base_buffer,
                     (void *)(buffer_pos - base_len));
 
-                /* datalink_error = DATALINK_INSUFFICIENT_READ_DATA; */
                 goto error;
         }
 
@@ -655,7 +684,7 @@ exit:
 }
 
 static uint8_t
-_packet_checksum(const uint8_t *buffer, uint32_t len)
+_packet_checksum_generate(const uint8_t *buffer, uint32_t len)
 {
         DEBUG_PRINTF("Enter\n");
         DEBUG_PRINTF("Reading %iB from buffer\n", len);
@@ -684,57 +713,20 @@ _packet_checksum(const uint8_t *buffer, uint32_t len)
 }
 
 static int
-_packet_check(const uint8_t *buffer, packet_response_type_t response_type)
+_packet_receive_check(const uint8_t *buffer, packet_response_type_t response_type)
 {
-        static const uint8_t packet_response_error[] = {
-                PACKET_HEADER_RECEIVE,
-                0x07,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x07
-        };
-
-        static const uint8_t packet_response_send[] = {
-                PACKET_HEADER_RECEIVE,
-                0x07,
-                0xFF,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x00,
-                0x06
-        };
-
         DEBUG_PRINTF("Enter\n");
 
-        /* datalink_error = DATALINK_OK; */
-
         /* Check if the response packet is an error packet */
-        uint32_t buffer_idx;
-        bool bad_packet;
+        DEBUG_HEXDUMP(buffer, _device_rev->packet.header_size);
+        DEBUG_HEXDUMP(_device_rev->packet.response_error, _device_rev->packet.header_size);
 
-        /* XXX: Refactor to memcmp() */
-        for (buffer_idx = 0;
-             ((buffer_idx < _device_rev->packet.header_size) &&
-                 (buffer[buffer_idx] == packet_response_error[buffer_idx]));
-             buffer_idx++);
-
-        bad_packet = buffer_idx == _device_rev->packet.header_size;
-        if (bad_packet) {
-                DEBUG_HEXDUMP(buffer, _device_rev->packet.header_size);
-
+        if ((memcmp(buffer, _device_rev->packet.response_error, _device_rev->packet.header_size)) == 0) {
                 /* If the response type is test, the error packet is valid */
                 if (response_type == PACKET_RESPONSE_TYPE_TEST) {
-                        /* datalink_error = DATALINK_OK; */
                         return 0;
                 }
 
-                /* datalink_error = DATALINK_ERROR_PACKET; */
                 return -1;
         }
 
@@ -743,29 +735,16 @@ _packet_check(const uint8_t *buffer, packet_response_type_t response_type)
 
         switch (response_type) {
         case PACKET_RESPONSE_TYPE_RECEIVE:
-                calc_checksum = _packet_checksum(buffer,
-                    (_device_rev->packet.header_size - 1) + buffer[7]);
+                calc_checksum = _packet_checksum_generate(buffer, (_device_rev->packet.header_size - 1) + buffer[7]);
                 checksum = buffer[(_device_rev->packet.header_size) + buffer[7] - 1];
 
                 if (checksum != calc_checksum) {
-                        DEBUG_PRINTF("Checksum mismatch (0x%02X, 0x%02X)\n",
-                            calc_checksum,
-                            checksum);
-                        /* datalink_error = DATALINK_CORRUPTED_PACKET; */
+                        DEBUG_PRINTF("Checksum mismatch (0x%02X, 0x%02X)\n", calc_checksum, checksum);
                         return -1;
                 }
                 break;
         case PACKET_RESPONSE_TYPE_SEND:
-                /* XXX: Refactor to memcmp() */
-                for (buffer_idx = 0;
-                     ((buffer_idx < _device_rev->packet.header_size) &&
-                         (buffer[buffer_idx] == packet_response_send[buffer_idx]));
-                     buffer_idx++);
-                bad_packet = buffer_idx != _device_rev->packet.header_size;
-                if (bad_packet) {
-                        DEBUG_HEXDUMP(buffer, _device_rev->packet.header_size);
-
-                        /* datalink_error = DATALINK_ERROR_PACKET; */
+                if ((memcmp(buffer, _device_rev->packet.response_send, _device_rev->packet.header_size)) != 0) {
                         return -1;
                 }
                 break;
@@ -773,12 +752,10 @@ _packet_check(const uint8_t *buffer, packet_response_type_t response_type)
                 return -1;
         }
 
-        /* datalink_error = DATALINK_OK; */
-
         return 0;
 }
 
-const ssusb_device_driver_t __device_datalink_red = {
+const ssusb_device_driver_t device_datalink_red = {
         .name            = "datalink-red",
         .description     = "USB DataLink Red LED Revision",
         .init            = _red_init,
@@ -808,7 +785,7 @@ const ssusb_device_driver_t __device_datalink_green = {
         .execute_buffer  = _execute_buffer,
 };
 
-const ssusb_device_driver_t __device_datalink_bluetooth = {
+const ssusb_device_driver_t device_datalink_bluetooth = {
         .name            = "datalink-bluetooth",
         .description     = "USB DataLink Bluetooth LED",
         .init            = _bluetooth_init,

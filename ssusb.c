@@ -14,16 +14,14 @@
 
 #include "drivers/driver.h"
 
-extern const ssusb_device_driver_t __device_datalink_red;
-extern const ssusb_device_driver_t __device_datalink_green;
-extern const ssusb_device_driver_t __device_datalink_bluetooth;
-extern const ssusb_device_driver_t __device_usb_cartridge;
+extern const ssusb_device_driver_t device_datalink_red;
+extern const ssusb_device_driver_t device_datalink_bluetooth;
+extern const ssusb_device_driver_t device_usb_cartridge;
 
 static const ssusb_device_driver_t *_device_drivers[] = {
-        &__device_usb_cartridge,
-        &__device_datalink_green,
-        &__device_datalink_red,
-        &__device_datalink_bluetooth,
+        &device_usb_cartridge,
+        &device_datalink_red,
+        &device_datalink_bluetooth,
         NULL
 };
 

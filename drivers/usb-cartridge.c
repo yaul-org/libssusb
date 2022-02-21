@@ -416,7 +416,7 @@ _checksum_send(const void *buffer, size_t len)
         return 0;
 }
 
-const ssusb_device_driver_t __device_usb_cartridge = {
+const ssusb_device_driver_t device_usb_cartridge = {
         .name            = "usb-cart",
         .description     = "USB Flash Cartridge by Anders Montonen (antime)",
         .init            = _init,
