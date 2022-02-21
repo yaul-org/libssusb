@@ -12,11 +12,13 @@ project_headers = [
 
 project_source_files = [
   'drivers/crc.c',
+  'drivers/datalink.c',
   'drivers/ring_buffer.c',
   'drivers/usb-cartridge.c',
+  'drivers/bftdi.c',
   'file.c',
-  'ssusb_interface.c',
   'ssusb.c',
+  'ssusb_interface.c'
 ]
 
 project_dependencies = [
@@ -25,13 +27,13 @@ project_dependencies = [
 
 include_directories = [
   include_directories('.'),
-  include_directories('include'),
+  include_directories('include')
 ]
 
 public_headers = include_directories('include')
 
 build_args = [
-  '-DEXPORT_DLL',
+  '-DEXPORT_DLL'
 ]
 
 link_args = [
@@ -40,7 +42,8 @@ link_args = [
 if get_option('buildtype').startswith('debug')
   project_source_files += 'debug.c'
 
-  add_project_arguments('-DDEBUG',  language: 'c')
+  add_project_arguments('-DDEBUG', language: 'c')
+  add_project_arguments('-ggdb3', language: 'c')
 endif
 
 # Target
