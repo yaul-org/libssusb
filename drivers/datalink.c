@@ -107,7 +107,8 @@ static int _init(const device_rev_t *device_rev);
 static int _deinit(void);
 static int _bluetooth_deinit(void);
 
-static int _device_test(void);
+static int _device_match(void);
+static int _device_revision_test(void);
 
 static int _poll(size_t *read_len);
 static int _device_read(void *buffer, size_t len);
@@ -141,6 +142,8 @@ static int
 _bluetooth_init(void)
 {
         assert(false && "Not yet implemented");
+
+        return -1;
 }
 
 static int
@@ -154,23 +157,15 @@ _init(const device_rev_t *device_rev)
                 DEBUG_PRINTF("ftdi_init()\n");
                 return -1;
         }
-
         _ftdi_error = ftdi_usb_open(&_ftdi_context, I_VENDOR, I_PRODUCT);
         if (_ftdi_error < 0) {
                 DEBUG_PRINTF("ftdi_usb_open()\n");
                 goto error;
         }
-
-        char product[sizeof(I_PRODUCT_STRING) + 1];
-
-        _ftdi_error =
-            ftdi_usb_get_product_string(&_ftdi_context, product, sizeof(product));
-
-        if ((strncmp(product, I_PRODUCT_STRING, sizeof(product))) != 0) {
-                /* XXX: Mismatched product */
+        if ((_device_match()) < 0) {
+                DEBUG_PRINTF("_device_match()\n");
                 goto error;
         }
-
         if ((_ftdi_error = ftdi_set_baudrate(&_ftdi_context, _device_rev->baud_rate)) < 0) {
                 DEBUG_PRINTF("ftdi_set_baudrate()\n");
                 goto error;
@@ -185,7 +180,8 @@ _init(const device_rev_t *device_rev)
         }
         _bftdi = bftdi_create(&_ftdi_context);
 
-        if ((_device_test()) < 0) {
+        if ((_device_revision_test()) < 0) {
+                DEBUG_PRINTF("_device_revision_test()\n");
                 goto error;
         }
 
@@ -235,10 +231,27 @@ static int
 _bluetooth_deinit(void)
 {
         assert(false && "Not yet implemented");
+
+        return -1;
 }
 
 static int
-_device_test(void)
+_device_match(void)
+{
+        char product[sizeof(I_PRODUCT_STRING) + 1];
+
+        _ftdi_error =
+            ftdi_usb_get_product_string(&_ftdi_context, product, sizeof(product));
+
+        if ((strncmp(product, I_PRODUCT_STRING, sizeof(product))) != 0) {
+                return -1;
+        }
+
+        return 0;
+}
+
+static int
+_device_revision_test(void)
 {
         /* We want to use the Red LED header byte size as with this revision,
          * we'll get a valid (error) packet */

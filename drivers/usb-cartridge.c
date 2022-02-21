@@ -77,6 +77,8 @@ static bftdi_t _bftdi;
 static int _init(void);
 static int _deinit(void);
 
+static int _device_match(void);
+
 static int _upload_execute_buffer(const void *buffer, uint32_t base_address,
     size_t len, bool execute);
 
@@ -125,14 +127,8 @@ _init(void)
                 DEBUG_PRINTF("ftdi_set_bitmode()\n");
                 goto error;
         }
-
-        char product[sizeof(I_PRODUCT_STRING) + 1];
-
-        _ftdi_error =
-            ftdi_usb_get_product_string(&_ftdi_context, product, sizeof(product));
-
-        if ((strncmp(product, I_PRODUCT_STRING, sizeof(product))) != 0) {
-                /* XXX: Mismatched product */
+        if ((_device_match()) < 0) {
+                DEBUG_PRINTF("_device_match()\n");
                 goto error;
         }
 
@@ -176,6 +172,21 @@ exit:
         ftdi_deinit(&_ftdi_context);
 
         return exit_code;
+}
+
+static int
+_device_match(void)
+{
+        char product[sizeof(I_PRODUCT_STRING) + 1];
+
+        _ftdi_error =
+            ftdi_usb_get_product_string(&_ftdi_context, product, sizeof(product));
+
+        if ((strncmp(product, I_PRODUCT_STRING, sizeof(product))) != 0) {
+                return -1;
+        }
+
+        return 0;
 }
 
 static int
