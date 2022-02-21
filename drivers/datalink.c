@@ -17,7 +17,7 @@
 
 #include <ftdi.h>
 
-#include "bftdi.h"
+#include "ftdi_ext.h"
 #include "debug.h"
 #include "driver.h"
 #include "endianess.h"
@@ -78,7 +78,6 @@ typedef struct {
 /* static ssusb_driver_error_t _driver_error = SSUSB_DRIVER_OK; */
 static struct ftdi_context _ftdi_context;
 static int _ftdi_error = 0;
-static bftdi_t _bftdi;
 static const device_rev_t *_device_rev = NULL;
 
 static const device_rev_t _device_rev_red = {
@@ -107,7 +106,6 @@ static int _init(const device_rev_t *device_rev);
 static int _deinit(void);
 static int _bluetooth_deinit(void);
 
-static int _device_match(void);
 static int _device_revision_test(void);
 
 static int _poll(size_t *read_len);
@@ -178,7 +176,6 @@ _init(const device_rev_t *device_rev)
                 DEBUG_PRINTF("ftdi_tcioflush()\n");
                 goto error;
         }
-        _bftdi = bftdi_create(&_ftdi_context);
 
         if ((_device_revision_test()) < 0) {
                 DEBUG_PRINTF("_device_revision_test()\n");
@@ -220,8 +217,6 @@ _deinit(void)
         }
 
 exit:
-        bftdi_destroy(_bftdi);
-
         ftdi_deinit(&_ftdi_context);
 
         return exit_code;
@@ -312,25 +307,25 @@ _upload_buffer(const void *buffer, uint32_t base_address, size_t len)
 static int
 _poll(size_t *read_len)
 {
-        return bftdi_poll(_bftdi, read_len);
+        return ftdi_buffered_poll(&_ftdi_context, read_len);
 }
 
 static int
 _peek(size_t len, void *buffer, size_t *read_len)
 {
-        return bftdi_peek(_bftdi, len, buffer, read_len);
+        return ftdi_buffered_peek(&_ftdi_context, len, buffer, read_len);
 }
 
 static int
 _device_read(void *buffer, size_t len)
 {
-        return bftdi_read(_bftdi, buffer, len);
+        return ftdi_buffered_read_data(&_ftdi_context, buffer, len);
 }
 
 static int
 _device_write(const void *buffer, size_t len)
 {
-        return bftdi_write(_bftdi, buffer, len);
+        return ftdi_buffered_write_data(&_ftdi_context, buffer, len);
 }
 
 static int

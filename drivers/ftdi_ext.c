@@ -12,7 +12,7 @@
 
 #include <libusb.h>
 
-#include "bftdi.h"
+#include "ftdi_ext.h"
 #include "cdefs.h"
 #include "debug.h"
 #include "math_utilities.h"
@@ -20,14 +20,18 @@
 
 #define RING_BUFFER_SIZE (64 * 1024)
 
-struct bftdi {
-        struct ftdi_context *context;
-        ring_buffer_t rb;
+static uint8_t _buffer[RING_BUFFER_SIZE];
+
+static ring_buffer_t _ring_buffer = {
+        .buffer      = _buffer,
+        .buffer_size = RING_BUFFER_SIZE,
+        .tail_index  = 0,
+        .head_index  = 0
 };
 
-static int _device_read(bftdi_t bftdi, void *buffer, size_t len, bool block, size_t *read_len);
-static int _device_write(bftdi_t bftdi, const void *buffer, size_t len, size_t *write_len);
-
+static int _device_read(struct ftdi_context *ftdi, void *buffer, size_t len, bool block, size_t *read_len);
+static int _device_write(struct ftdi_context *ftdi, const void *buffer, size_t len, size_t *write_len);
+
 int
 ftdi_usb_get_product_string(struct ftdi_context *ftdi, char *product, size_t product_len)
 {
@@ -57,7 +61,7 @@ ftdi_usb_get_serial_string(struct ftdi_context *ftdi, char *serial, size_t seria
             serial,
             serial_len);
 }
-
+
 int
 ftdi_usb_match_product(struct ftdi_context *ftdi, const char *product)
 {
@@ -75,85 +79,49 @@ ftdi_usb_match_product(struct ftdi_context *ftdi, const char *product)
         return 0;
 }
 
-
-bftdi_t
-bftdi_create(struct ftdi_context *context)
-{
-        struct bftdi * const bftdi = malloc(sizeof(struct bftdi));
-        if (bftdi == NULL) {
-                return NULL;
-        }
-
-        bftdi->context = context;
-
-        if ((ring_buffer_init(&bftdi->rb, RING_BUFFER_SIZE)) < 0) {
-                free(bftdi);
-
-                return NULL;
-        }
-
-        return bftdi;
-}
-
-void
-bftdi_destroy(bftdi_t bftdi)
-{
-        if (bftdi == NULL) {
-                return;
-        }
-
-        free(bftdi);
-}
-
 int
-bftdi_poll(bftdi_t bftdi, size_t *read_len)
+ftdi_buffered_poll(struct ftdi_context *ftdi, size_t *read_len)
 {
-        struct bftdi *_bftdi = bftdi;
-
         uint8_t byte;
 
-        if ((ftdi_read_data(_bftdi->context, &byte, sizeof(byte))) < 0) {
-                /* _ftdi_error = SSUSB_DRIVER_DEVICE_ERROR; */
+        if ((ftdi_read_data(ftdi, &byte, sizeof(byte))) < 0) {
+                DEBUG_PRINTF("ftdi_read_data: %s\n", ftdi_get_error_string(ftdi));
                 return -1;
         }
 
-        ring_buffer_queue(&_bftdi->rb, byte);
+        ring_buffer_queue(&_ring_buffer, byte);
 
         if (read_len != NULL) {
-                *read_len = ring_buffer_size(&_bftdi->rb);
+                *read_len = ring_buffer_size(&_ring_buffer);
         }
 
         return 0;
 }
 
 int
-bftdi_peek(bftdi_t bftdi, size_t len, void *buffer, size_t *read_len)
+ftdi_buffered_peek(struct ftdi_context *ftdi __unused, size_t len, void *buffer, size_t *read_len)
 {
-        /* _driver_error = SSUSB_DRIVER_OK; */
-
         assert(buffer != NULL);
         assert(read_len != NULL);
 
-        struct bftdi *_bftdi = bftdi;
-
-        const ring_buffer_size_t rb_size = ring_buffer_size(&_bftdi->rb);
+        const ring_buffer_size_t rb_size = ring_buffer_size(&_ring_buffer);
 
         *read_len = min(rb_size, len);
 
         uint8_t * buffer_pos = buffer;
         for (size_t i = 0; i < *read_len; i++, buffer_pos++) {
-                ring_buffer_peek(&_bftdi->rb, buffer_pos, (rb_size - 1) - i);
+                ring_buffer_peek(&_ring_buffer, buffer_pos, (rb_size - 1) - i);
         }
 
         return 0;
 }
 
 int
-bftdi_read(bftdi_t bftdi, void *buffer, size_t len)
+ftdi_buffered_read_data(struct ftdi_context *ftdi, void *buffer, size_t len)
 {
         assert(buffer != NULL);
 
-        if ((_device_read(bftdi, buffer, len, true, NULL)) < 0) {
+        if ((_device_read(ftdi, buffer, len, true, NULL)) < 0) {
                 return -1;
         }
 
@@ -161,11 +129,11 @@ bftdi_read(bftdi_t bftdi, void *buffer, size_t len)
 }
 
 int
-bftdi_write(bftdi_t bftdi, const void *buffer, size_t len)
+ftdi_buffered_write_data(struct ftdi_context *ftdi, const void *buffer, size_t len)
 {
         assert(buffer != NULL);
 
-        if ((_device_write(bftdi, buffer, len, NULL)) < 0) {
+        if ((_device_write(ftdi, buffer, len, NULL)) < 0) {
                 return -1;
         }
 
@@ -173,19 +141,15 @@ bftdi_write(bftdi_t bftdi, const void *buffer, size_t len)
 }
 
 static int
-_device_read(bftdi_t bftdi, void *buffer, size_t len, bool block, size_t *read_len)
+_device_read(struct ftdi_context *ftdi, void *buffer, size_t len, bool block, size_t *read_len)
 {
-        struct bftdi *_bftdi = bftdi;
-
-        /* _driver_error = SSUSB_DRIVER_OK; */
-
         uint8_t *buffer_pos;
         buffer_pos = buffer;
 
-        const ring_buffer_size_t rb_size = ring_buffer_size(&_bftdi->rb);
+        const ring_buffer_size_t rb_size = ring_buffer_size(&_ring_buffer);
         const uint32_t preread_amount = min(rb_size, len);
 
-        ring_buffer_array_dequeue(&_bftdi->rb, buffer_pos, preread_amount);
+        ring_buffer_array_dequeue(&_ring_buffer, buffer_pos, preread_amount);
 
         buffer_pos += preread_amount;
 
@@ -195,8 +159,8 @@ _device_read(bftdi_t bftdi, void *buffer, size_t len, bool block, size_t *read_l
 
         while (((uintptr_t)buffer_pos - (uintptr_t)buffer) < len) {
                 int read;
-                if ((read = ftdi_read_data(_bftdi->context, buffer_pos, len)) < 0) {
-                        /* _driver_error = */
+                if ((read = ftdi_read_data(ftdi, buffer_pos, len)) < 0) {
+                        DEBUG_PRINTF("ftdi_read_data: %s\n", ftdi_get_error_string(ftdi));
                         return -1;
                 }
 
@@ -215,12 +179,8 @@ _device_read(bftdi_t bftdi, void *buffer, size_t len, bool block, size_t *read_l
 }
 
 static int
-_device_write(bftdi_t bftdi, const void *buffer, size_t len, size_t *write_len)
+_device_write(struct ftdi_context *ftdi, const void *buffer, size_t len, size_t *write_len)
 {
-        struct bftdi *_bftdi = bftdi;
-
-        /* _driver_error = SSUSB_DRIVER_OK; */
-
         uint32_t written;
         written = 0;
 
@@ -230,8 +190,8 @@ _device_write(bftdi_t bftdi, const void *buffer, size_t len, size_t *write_len)
 
         while ((len - written) > 0) {
                 int write;
-                if ((write = ftdi_write_data(_bftdi->context, buffer, len)) < 0) {
-                        DEBUG_PRINTF("write_error: %s\n", ftdi_get_error_string(_bftdi->context));
+                if ((write = ftdi_write_data(ftdi, buffer, len)) < 0) {
+                        DEBUG_PRINTF("ftdi_write_data: %s\n", ftdi_get_error_string(ftdi));
                         return -1;
                 }
 

@@ -15,7 +15,7 @@ project_source_files = [
   'drivers/datalink.c',
   'drivers/ring_buffer.c',
   'drivers/usb-cartridge.c',
-  'drivers/bftdi.c',
+  'drivers/ftdi_ext.c',
   'file.c',
   'ssusb.c',
   'ssusb_interface.c'

@@ -43,7 +43,7 @@
 
 #include <ftdi.h>
 
-#include "bftdi.h"
+#include "ftdi_ext.h"
 #include "crc.h"
 #include "debug.h"
 #include "driver.h"
@@ -72,12 +72,9 @@ typedef enum {
 static ssusb_driver_error_t _driver_error = SSUSB_DRIVER_OK;
 static struct ftdi_context _ftdi_context;
 static int _ftdi_error = 0;
-static bftdi_t _bftdi;
 
 static int _init(void);
 static int _deinit(void);
-
-static int _device_match(void);
 
 static int _upload_execute_buffer(const void *buffer, uint32_t base_address,
     size_t len, bool execute);
@@ -132,8 +129,6 @@ _init(void)
                 goto error;
         }
 
-        _bftdi = bftdi_create(&_ftdi_context);
-
         return 0;
 
 error:
@@ -167,8 +162,6 @@ _deinit(void)
         }
 
 exit:
-        bftdi_destroy(_bftdi);
-
         ftdi_deinit(&_ftdi_context);
 
         return exit_code;
@@ -177,25 +170,25 @@ exit:
 static int
 _poll(size_t *read_len)
 {
-        return bftdi_poll(_bftdi, read_len);
+        return ftdi_buffered_poll(&_ftdi_context, read_len);
 }
 
 static int
 _peek(size_t len, void *buffer, size_t *read_len)
 {
-        return bftdi_peek(_bftdi, len, buffer, read_len);
+        return ftdi_buffered_peek(&_ftdi_context, len, buffer, read_len);
 }
 
 static int
 _device_read(void *buffer, size_t len)
 {
-        return bftdi_read(_bftdi, buffer, len);
+        return ftdi_buffered_read_data(&_ftdi_context, buffer, len);
 }
 
 static int
 _device_write(const void *buffer, size_t len)
 {
-        return bftdi_write(_bftdi, buffer, len);
+        return ftdi_buffered_write_data(&_ftdi_context, buffer, len);
 }
 
 static ssusb_driver_error_t
