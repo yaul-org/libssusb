@@ -112,11 +112,12 @@ file_write(const char *output_file, const void *buffer, size_t len)
         assert(buffer != NULL);
         assert(len != 0);
 
-        ssusb_ret_t ret;
-        ret = _file_exists(output_file);
-        if (ret != SSUSB_OK) {
-                return ret;
+        if ((output_file == NULL) || (*output_file == '\0')) {
+                return SSUSB_FILE_INVALID_PATH;
         }
+
+        ssusb_ret_t ret;
+        ret = SSUSB_OK;
 
         FILE *file;
 

@@ -15,10 +15,10 @@
 #define ADDRESS_01(x)   ((uint8_t)((x) >> 8) & 0xFF)
 #define ADDRESS_LSB(x)  ((uint8_t)(x) & 0xFF)
 
-#define LEN_MSB(x)      (ADDRESS_MSB(x))
-#define LEN_02(x)       (ADDRESS_02(x))
-#define LEN_01(x)       (ADDRESS_01(x))
-#define LEN_LSB(x)      (ADDRESS_LSB(x))
+#define SIZE_MSB(x) (ADDRESS_MSB(x))
+#define SIZE_02(x)  (ADDRESS_02(x))
+#define SIZE_01(x)  (ADDRESS_01(x))
+#define SIZE_LSB(x) (ADDRESS_LSB(x))
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define TO_LE(x) (__builtin_bswap32((x)))

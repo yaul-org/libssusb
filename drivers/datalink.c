@@ -68,6 +68,11 @@ typedef enum {
 } packet_response_type_t;
 
 typedef struct {
+        uint8_t buffer[200];
+        size_t size;
+} packet_t;
+
+typedef struct {
         uint32_t baud_rate;
 
         struct {
@@ -160,16 +165,22 @@ static int _bluetooth_deinit(void);
 
 static int _device_revision_test(void);
 
-static int _poll(size_t *read_len);
-static int _device_read(void *buffer, size_t len);
-static int _device_write(const void *buffer, size_t len);
+static int _poll(size_t *read_size);
+static int _usb_read(void *buffer, size_t size);
+static int _usb_write(const void *buffer, size_t size);
 
-static int _upload_execute_buffer(const void *buffer, uint32_t base_address, size_t len, bool execute);
+static int _upload_execute_buffer(const void *buffer, uint32_t base_address,
+    size_t size, bool execute);
 
-static size_t _packet_generate(packet_type_t packet_type, void *packet_buffer, uint32_t address, const void *data, size_t len);
-static int _packet_xchg(packet_response_type_t response_type, const void *packet, size_t packet_size);
-static int _packet_response_check(const uint8_t *, packet_response_type_t response_type);
-static uint8_t _packet_checksum_generate(const uint8_t *buffer, uint32_t len);
+static void _packet_generate(packet_type_t packet_type, packet_t *packet,
+    uint32_t base_address, const void *data, size_t size);
+static int _packet_xchg(packet_response_type_t response_type,
+    const packet_t *packet_send, packet_t *packet_response);
+static int _packet_download_xchg(packet_type_t packet_type, uint32_t address,
+    void *buffer, size_t data_size);
+static int _packet_response_check(packet_response_type_t response_type,
+    const packet_t *packet_response);
+static uint8_t _packet_checksum_generate(const uint8_t *buffer, uint32_t size);
 
 static int
 _red_init(void)
@@ -286,7 +297,7 @@ _device_revision_test(void)
 {
         /* We want to use the Red LED header byte size as with this revision,
          * we'll get a valid (error) packet */
-        uint8_t read_buffer[PACKET_REV_RED_HEADER_SIZE];
+        packet_t packet;
 
         /* This packet was extracted from the official tool via USB packet
          * sniffing */
@@ -302,21 +313,19 @@ _device_revision_test(void)
                 0x83
         };
 
-        if ((_device_write(packet_test, PACKET_REV_RED_HEADER_SIZE)) < 0) {
+        if ((_usb_write(packet_test, PACKET_REV_RED_HEADER_SIZE)) < 0) {
                 DEBUG_PRINTF("_device_write error\n");
                 return -1;
         }
 
-        (void)memset(read_buffer, 0, sizeof(read_buffer));
-
         for (int tries = DEVICE_TEST_TRIES; ; tries--) {
-                size_t read_len;
-                if ((_poll(&read_len)) < 0) {
+                size_t read_size;
+                if ((_poll(&read_size)) < 0) {
                         return -1;
                 }
 
-                DEBUG_PRINTF("read_len: %zu\n", read_len);
-                if (read_len == PACKET_REV_RED_HEADER_SIZE) {
+                DEBUG_PRINTF("read_size: %zu\n", read_size);
+                if (read_size == PACKET_REV_RED_HEADER_SIZE) {
                         DEBUG_PRINTF("Found\n");
                         break;
                 }
@@ -329,12 +338,12 @@ _device_revision_test(void)
                 }
         }
 
-        if ((_device_read(read_buffer, PACKET_REV_RED_HEADER_SIZE)) < 0) {
+        if ((_usb_read(packet.buffer, PACKET_REV_RED_HEADER_SIZE)) < 0) {
                 DEBUG_PRINTF("_device_read error\n");
                 return -1;
         }
 
-        if ((_packet_response_check(read_buffer, PACKET_RESPONSE_TYPE_TEST)) < 0) {
+        if ((_packet_response_check(PACKET_RESPONSE_TYPE_TEST, &packet)) < 0) {
                 return -1;
         }
 
@@ -342,12 +351,12 @@ _device_revision_test(void)
 }
 
 static int
-_upload_buffer(const void *buffer, uint32_t base_address, size_t len)
+_upload_buffer(const void *buffer, uint32_t base_address, size_t size)
 {
         DEBUG_PRINTF("Enter\n");
 
         int ret;
-        ret = _upload_execute_buffer(buffer, base_address, len,
+        ret = _upload_execute_buffer(buffer, base_address, size,
             /* execute = */ false);
 
         DEBUG_PRINTF("Exit\n");
@@ -356,205 +365,101 @@ _upload_buffer(const void *buffer, uint32_t base_address, size_t len)
 }
 
 static int
-_poll(size_t *read_len)
+_poll(size_t *read_size)
 {
-        return ftdi_buffered_poll(&_ftdi_context, read_len);
+        return ftdi_buffered_poll(&_ftdi_context, read_size);
 }
 
 static int
-_peek(size_t len, void *buffer, size_t *read_len)
+_peek(size_t size, void *buffer, size_t *read_size)
 {
-        return ftdi_buffered_peek(&_ftdi_context, len, buffer, read_len);
+        return ftdi_buffered_peek(&_ftdi_context, size, buffer, read_size);
 }
 
 static int
-_device_read(void *buffer, size_t len)
+_usb_read(void *buffer, size_t size)
 {
-        return ftdi_buffered_read_data(&_ftdi_context, buffer, len);
+        DEBUG_PRINTF("[1;32mReading %zuB[m\n", size);
+        return ftdi_buffered_read_data(&_ftdi_context, buffer, size);
 }
 
 static int
-_device_write(const void *buffer, size_t len)
+_usb_write(const void *buffer, size_t size)
 {
-        return ftdi_buffered_write_data(&_ftdi_context, buffer, len);
+        DEBUG_PRINTF("[1;32mWriting %zuB[m\n", size);
+
+        return ftdi_buffered_write_data(&_ftdi_context, buffer, size);
 }
 
 static int
-_download_buffer(void *buffer, uint32_t base_address, size_t len)
+_download_buffer(void *buffer, uint32_t base_address, size_t size)
 {
-#define STATE_RECEIVE_FIRST  0
-#define STATE_RECEIVE_MIDDLE 1
-#define STATE_RECEIVE_FINAL  2
-#define STATE_FINISH         3
-
         DEBUG_PRINTF("Enter\n");
 
-        /* Sanity check */
-        if (buffer == NULL) {
+        if (size < 3) {
                 return -1;
         }
 
-        if (base_address == 0x00000000) {
-                return -1;
-        }
+        const size_t packet_data_size = _device_rev->packet.data_size;
 
-        if (len <= 1) {
-                return -1;
-        }
+        /* Try to split the size into three parts, with the bulk of it for the
+         * "middle" packets */
+        const size_t size_div = size / 3;
+        const size_t size_remainder = size % 3;
+        const size_t div_remainder = max(0U, size_div - packet_data_size);
 
-        int exit_code;
-        exit_code = 0;
+        const size_t first_size = min(size_div, packet_data_size);
 
-        uint8_t buffer_first[] = {
-                PACKET_HEADER_SEND,
-                0x07,
-                PACKET_TYPE_RECEIVE_FIRST,
-                0x00, /* MSB address */
-                0x00, /* 02 address */
-                0x00, /* 01 address */
-                0x00, /* LSB address */
-                0x00, /* Datalink */
-                0x00  /* Checksum */
-        };
+        const size_t middle_size = size_div + size_remainder + div_remainder + div_remainder;
+        const uint32_t middle_count = ((middle_size + (packet_data_size - 1)) / packet_data_size);
 
-        uint8_t buffer_middle[] = {
-                PACKET_HEADER_SEND,
-                0x07,
-                PACKET_TYPE_RECEIVE_MIDDLE,
-                0x00, /* MSB address */
-                0x00, /* 02 address */
-                0x00, /* 01 address */
-                0x00, /* LSB address */
-                0x00, /* Datalink */
-                0x00  /* Checksum */
-        };
+        const size_t final_size = min(size_div, packet_data_size);
 
-        uint8_t buffer_final[] = {
-                PACKET_HEADER_SEND,
-                0x07,
-                PACKET_TYPE_RECEIVE_FINAL,
-                0x00, /* MSB address */
-                0x00, /* 02 address */
-                0x00, /* 01 address */
-                0x00, /* LSB address */
-                0x00, /* Length */
-                0x00  /* Checksum */
-        };
-
-        uint8_t read_buffer[_device_rev->packet.total_size];
-
-        int32_t state;
-        state = STATE_RECEIVE_FIRST;
-        uint32_t count;
-        count = 0;
         uint32_t address;
         address = base_address;
 
-        uint8_t *write_buffer;
-        write_buffer = NULL;
+        uint8_t *buffer_pos;
+        buffer_pos = buffer;
 
-        const bool tier_1 = len <= _device_rev->packet.data_size;
-        const bool tier_2 = (len > _device_rev->packet.data_size) &&
-                            (len <= (2 * _device_rev->packet.data_size));
-        const bool tier_3 = len > (2 * _device_rev->packet.data_size);
-
-        while (true) {
-                switch (state) {
-                case STATE_RECEIVE_FIRST:
-                        DEBUG_PRINTF("%s", "State STATE_RECEIVE_FIRST\n");
-
-                        write_buffer = &buffer_first[0];
-
-                        if (tier_1) {
-                                write_buffer[7] = len - 1;
-                                state = STATE_RECEIVE_FINAL;
-                        } else if (tier_2) {
-                                write_buffer[7] = _device_rev->packet.data_size;
-                                state = STATE_RECEIVE_FINAL;
-                        } else if (tier_3) {
-                                write_buffer[7] = _device_rev->packet.data_size;
-                                /* The number of middle packets to send */
-                                count = (len - _device_rev->packet.data_size - 1) / _device_rev->packet.data_size;
-
-                                state = STATE_RECEIVE_MIDDLE;
-                        }
-                        break;
-                case STATE_RECEIVE_MIDDLE:
-                        write_buffer = &buffer_middle[0];
-
-                        DEBUG_PRINTF("State STATE_RECEIVE_MIDDLE (%i)\n", count);
-
-                        write_buffer[7] = _device_rev->packet.data_size;
-
-                        count--;
-
-                        if (count == 0) {
-                                state = STATE_RECEIVE_FINAL;
-                        }
-                        break;
-                case STATE_RECEIVE_FINAL:
-                        DEBUG_PRINTF("State STATE_RECEIVE_FINAL\n");
-
-                        write_buffer = &buffer_final[0];
-
-                        if (tier_1) {
-                                write_buffer[7] = 1;
-                        } else if (tier_2) {
-                                write_buffer[7] = len - _device_rev->packet.data_size;
-                        } else if (tier_3) {
-                                write_buffer[7] = (len - _device_rev->packet.data_size) % _device_rev->packet.data_size;
-                                write_buffer[7] = (write_buffer[7] == 0) ? _device_rev->packet.data_size : write_buffer[7];
-                        }
-
-                        state = STATE_FINISH;
-                        break;
-                case STATE_FINISH:
-                        goto exit;
-                }
-
-                write_buffer[3] = ADDRESS_MSB(address);
-                write_buffer[4] = ADDRESS_02(address);
-                write_buffer[5] = ADDRESS_01(address);
-                write_buffer[6] = ADDRESS_LSB(address);
-                write_buffer[8] = _packet_checksum_generate(write_buffer,
-                    _device_rev->packet.header_size - 1);
-
-                if ((_device_write(write_buffer, _device_rev->packet.header_size)) < 0) {
-                        goto error;
-                }
-
-                (void)memset(read_buffer, 0, _device_rev->packet.total_size);
-                if ((_device_read(read_buffer, _device_rev->packet.header_size + write_buffer[7])) < 0) {
-                        goto error;
-                }
-
-                if ((_packet_response_check(read_buffer, PACKET_RESPONSE_TYPE_RECEIVE)) < 0) {
-                        goto error;
-                }
-
-                address += read_buffer[7] + 1;
-
-                (void)memcpy(buffer, &read_buffer[_device_rev->packet.header_size - 1],
-                    read_buffer[7]);
+        if ((_packet_download_xchg(PACKET_TYPE_RECEIVE_FIRST, address, buffer_pos, first_size)) < 0) {
+                goto error;
         }
 
-        goto exit;
+        address += first_size;
+        buffer_pos += first_size;
 
-error:
-        exit_code = -1;
+        for (uint32_t i = 0, remainder_size = middle_size; i < middle_count; i++) {
+                const size_t data_size = min(remainder_size, packet_data_size);
 
-exit:
+                if ((_packet_download_xchg(PACKET_TYPE_RECEIVE_MIDDLE, address, buffer_pos, data_size)) < 0) {
+                        goto error;
+                }
+
+                address += data_size;
+                buffer_pos += data_size;
+                remainder_size -= data_size;
+        }
+
+        if ((_packet_download_xchg(PACKET_TYPE_RECEIVE_FINAL, address, buffer_pos, final_size)) < 0) {
+                goto error;
+        }
+
         DEBUG_PRINTF("Exit\n");
 
-        return exit_code;
+        return 0;
+
+error:
+        DEBUG_PRINTF("Exit\n");
+
+        return -1;
 }
 
 static int
-_execute_buffer(const void *buffer, uint32_t base_address, size_t len)
+_execute_buffer(const void *buffer, uint32_t base_address, size_t size)
 {
         DEBUG_PRINTF("Enter\n");
 
-        int ret = _upload_execute_buffer(buffer, base_address, len,
+        int ret = _upload_execute_buffer(buffer, base_address, size,
             /* execute = */ true);
 
         DEBUG_PRINTF("Exit\n");
@@ -564,11 +469,12 @@ _execute_buffer(const void *buffer, uint32_t base_address, size_t len)
 
 static int
 _upload_execute_buffer(const void *buffer, uint32_t base_address,
-    size_t len, bool execute)
+    size_t size, bool execute)
 {
         DEBUG_PRINTF("Enter\n");
 
-        uint8_t packet[_device_rev->packet.total_size];
+        static packet_t packet;
+        static packet_t packet_response;
 
         const uint8_t *buffer_pos;
         buffer_pos = buffer;
@@ -579,36 +485,32 @@ _upload_execute_buffer(const void *buffer, uint32_t base_address,
         /* Send the first two bytes last (and generate an execute packet). The
          * size of an SH-2 instruction is 2-bytes */
         if (execute) {
-                len -= 2;
+                size -= 2;
                 address += 2;
                 buffer_pos += 2;
         }
 
-        while (true) {
-                if (len == 0) {
-                        const size_t packet_size =
-                            _packet_generate(PACKET_TYPE_SEND_EXECUTE, packet, base_address, buffer, 2);
+        while (size != 0) {
+                const size_t transfer_size = min(size, _device_rev->packet.data_size);
 
-                        if ((_packet_xchg(PACKET_RESPONSE_TYPE_SEND, packet, packet_size)) < 0) {
-                                goto error;
-                        }
+                _packet_generate(PACKET_TYPE_SEND, &packet, address, buffer_pos, transfer_size);
 
-                        break;
-                } else {
-                        const size_t transfer_len = min(len, _device_rev->packet.data_size);
+                DEBUG_PRINTF("Transferring packet (%zuB) (data: %zuB -> 0x%08X)\n", packet.size, transfer_size, address);
 
-                        const size_t packet_size =
-                            _packet_generate(PACKET_TYPE_SEND, packet, address, buffer_pos, transfer_len);
+                if ((_packet_xchg(PACKET_RESPONSE_TYPE_SEND, &packet, &packet_response)) < 0) {
+                        goto error;
+                }
 
-                        DEBUG_PRINTF("Transferring packet (%zuB) (data: %zuB -> 0x%08X)\n", packet_size, transfer_len, address);
+                size -= transfer_size;
+                address += transfer_size;
+                buffer_pos += transfer_size;
+        }
 
-                        if ((_packet_xchg(PACKET_RESPONSE_TYPE_SEND, packet, packet_size)) < 0) {
-                                goto error;
-                        }
+        if (execute) {
+                _packet_generate(PACKET_TYPE_SEND_EXECUTE, &packet, base_address, buffer, 2);
 
-                        len -= transfer_len;
-                        address += transfer_len;
-                        buffer_pos += transfer_len;
+                if ((_packet_xchg(PACKET_RESPONSE_TYPE_SEND, &packet, &packet_response)) < 0) {
+                        goto error;
                 }
         }
 
@@ -622,83 +524,120 @@ error:
         return -1;
 }
 
-static size_t
-_packet_generate(packet_type_t packet_type, void *packet_buffer, uint32_t address, const void *data, size_t len)
+static void
+_packet_generate(packet_type_t packet_type, packet_t *packet,
+    uint32_t base_address, const void *data, size_t size)
 {
-        uint8_t * const packet = packet_buffer;
+        (void)memset(packet, 0, sizeof(packet->buffer));
 
-        (void)memset(packet, 0, _device_rev->packet.total_size);
-
-        packet[0] = PACKET_HEADER_SEND;
-        packet[3] = ADDRESS_MSB(address);
-        packet[4] = ADDRESS_02(address);
-        packet[5] = ADDRESS_01(address);
-        packet[6] = ADDRESS_LSB(address);
+        packet->buffer[0] = PACKET_HEADER_SEND;
+        packet->buffer[2] = packet_type;
+        packet->buffer[3] = ADDRESS_MSB(base_address);
+        packet->buffer[4] = ADDRESS_02(base_address);
+        packet->buffer[5] = ADDRESS_01(base_address);
+        packet->buffer[6] = ADDRESS_LSB(base_address);
+        packet->buffer[7] = size;
 
         switch (packet_type) {
         case PACKET_TYPE_RECEIVE_FIRST:
-                return 0;
         case PACKET_TYPE_RECEIVE_MIDDLE:
-                return 0;
         case PACKET_TYPE_RECEIVE_FINAL:
-                return 0;
+                packet->buffer[1] = 0x07;
+                packet->buffer[8] = _packet_checksum_generate(packet->buffer, _device_rev->packet.header_size - 1);
+
+                packet->size = _device_rev->packet.header_size;
+                break;
         case PACKET_TYPE_SEND:
         case PACKET_TYPE_SEND_EXECUTE:
-                packet[1] = min(7 + len, _device_rev->packet.total_size);
-                packet[2] = packet_type;
-                packet[7] = len;
+                packet->buffer[1] = min(7 + size, _device_rev->packet.total_size);
 
                 /* Copy data */
-                (void)memcpy(&packet[8], data, len);
+                (void)memcpy(&packet->buffer[8], data, size);
 
                 /* Generate checksum at last byte */
-                packet[_device_rev->packet.header_size + len - 1] =
-                    _packet_checksum_generate(packet, (_device_rev->packet.header_size + len) - 1);
+                packet->buffer[_device_rev->packet.header_size + size - 1] =
+                    _packet_checksum_generate(packet->buffer, (_device_rev->packet.header_size + size) - 1);
 
-                return (_device_rev->packet.header_size + len + 1);
+                packet->size = _device_rev->packet.header_size + size + 1;
+                break;
         case PACKET_TYPE_TEST:
-                return _device_rev->packet.header_size;
-        default:
-                return 0;
+                break;
         }
 }
 
 static int
-_packet_xchg(packet_response_type_t response_type, const void *packet, size_t packet_size)
+_packet_xchg(packet_response_type_t response_type, const packet_t *packet_send,
+    packet_t *packet_response)
 {
-        if ((_device_write(packet, packet_size)) < 0) {
+        DEBUG_PRINTF("Enter\n");
+
+        if ((_usb_write(packet_send->buffer, packet_send->size)) < 0) {
                 DEBUG_PRINTF("_device_write error\n");
                 return -1;
         }
 
-        uint8_t packet_response[_device_rev->packet.header_size];
+        switch (response_type) {
+        case PACKET_RESPONSE_TYPE_RECEIVE:
+                packet_response->size = packet_send->buffer[7] + _device_rev->packet.header_size;
+                break;
+        case PACKET_RESPONSE_TYPE_SEND:
+        case PACKET_RESPONSE_TYPE_TEST:
+                packet_response->size = _device_rev->packet.header_size;
+                break;
+        }
 
-        if ((_device_read(packet_response, _device_rev->packet.header_size)) < 0) {
+        if ((_usb_read(packet_response->buffer, packet_response->size)) < 0) {
                 DEBUG_PRINTF("_device_read error\n");
                 return -1;
         }
 
-        if ((_packet_response_check(packet_response, response_type)) < 0) {
+        if ((_packet_response_check(response_type, packet_response)) < 0) {
                 DEBUG_PRINTF("_packet_check error\n");
                 return -1;
         }
 
+        DEBUG_PRINTF("Exit\n");
+
         return 0;
 }
 
+static int
+_packet_download_xchg(packet_type_t packet_type, uint32_t address, void *buffer,
+    size_t data_size)
+{
+        static packet_t packet;
+        static packet_t packet_response;
+
+        _packet_generate(packet_type, &packet, address, NULL, data_size);
+
+        DEBUG_HEXDUMP(packet.buffer, packet.size);
+
+        if ((_packet_xchg(PACKET_RESPONSE_TYPE_RECEIVE, &packet, &packet_response)) < 0) {
+                return -1;
+        }
+
+        const void * const data =
+            &packet_response.buffer[_device_rev->packet.header_size - 1];
+
+        (void)memcpy(buffer, data, data_size);
+
+        return 0;
+}
+
+
 static uint8_t
-_packet_checksum_generate(const uint8_t *buffer, uint32_t len)
+_packet_checksum_generate(const uint8_t *buffer, uint32_t size)
 {
         DEBUG_PRINTF("Enter\n");
-        DEBUG_PRINTF("Reading %iB from buffer\n", len);
+        DEBUG_PRINTF("Reading %iB from buffer\n", size);
 
-        DEBUG_HEXDUMP(buffer, len);
+        DEBUG_HEXDUMP(buffer, size);
 
         uint32_t checksum;
         checksum = 0;
 
         uint32_t buffer_idx;
-        for (buffer_idx = 1; buffer_idx < len; buffer_idx++) {
+        for (buffer_idx = 1; buffer_idx < size; buffer_idx++) {
 #ifdef DEBUG
                 if (buffer_idx < _device_rev->packet.header_size) {
                         DEBUG_PRINTF("B[%02i]\n", buffer_idx);
@@ -716,15 +655,16 @@ _packet_checksum_generate(const uint8_t *buffer, uint32_t len)
 }
 
 static int
-_packet_response_check(const uint8_t *buffer, packet_response_type_t response_type)
+_packet_response_check(packet_response_type_t response_type,
+    const packet_t *packet_response)
 {
         DEBUG_PRINTF("Enter\n");
 
         /* Check if the response packet is an error packet */
-        DEBUG_HEXDUMP(buffer, _device_rev->packet.header_size);
+        DEBUG_HEXDUMP(packet_response->buffer, packet_response->size);
         DEBUG_HEXDUMP(_device_rev->packet.response_error, _device_rev->packet.header_size);
 
-        if ((memcmp(buffer, _device_rev->packet.response_error, _device_rev->packet.header_size)) == 0) {
+        if ((memcmp(packet_response->buffer, _device_rev->packet.response_error, _device_rev->packet.header_size)) == 0) {
                 /* If the response type is test, the error packet is valid */
                 if (response_type == PACKET_RESPONSE_TYPE_TEST) {
                         return 0;
@@ -738,8 +678,8 @@ _packet_response_check(const uint8_t *buffer, packet_response_type_t response_ty
 
         switch (response_type) {
         case PACKET_RESPONSE_TYPE_RECEIVE:
-                calc_checksum = _packet_checksum_generate(buffer, (_device_rev->packet.header_size - 1) + buffer[7]);
-                checksum = buffer[(_device_rev->packet.header_size) + buffer[7] - 1];
+                calc_checksum = _packet_checksum_generate(packet_response->buffer, (_device_rev->packet.header_size - 1) + packet_response->buffer[7]);
+                checksum = packet_response->buffer[_device_rev->packet.header_size + packet_response->buffer[7] - 1];
 
                 if (checksum != calc_checksum) {
                         DEBUG_PRINTF("Checksum mismatch (0x%02X, 0x%02X)\n", calc_checksum, checksum);
@@ -747,7 +687,7 @@ _packet_response_check(const uint8_t *buffer, packet_response_type_t response_ty
                 }
                 break;
         case PACKET_RESPONSE_TYPE_SEND:
-                if ((memcmp(buffer, _device_rev->packet.response_send, _device_rev->packet.header_size)) != 0) {
+                if ((memcmp(packet_response->buffer, _device_rev->packet.response_send, _device_rev->packet.header_size)) != 0) {
                         return -1;
                 }
                 break;
@@ -766,8 +706,8 @@ const ssusb_device_driver_t device_datalink_red = {
         /* .error           = _error, */
         .poll            = _poll,
         .peek            = _peek,
-        .read            = _device_read,
-        .write           = _device_write,
+        .read            = _usb_read,
+        .write           = _usb_write,
         .download_buffer = _download_buffer,
         .upload_buffer   = _upload_buffer,
         .execute_buffer  = _execute_buffer,
@@ -781,8 +721,8 @@ const ssusb_device_driver_t __device_datalink_green = {
         /* .error           = _error, */
         .poll            = _poll,
         .peek            = _peek,
-        .read            = _device_read,
-        .write           = _device_write,
+        .read            = _usb_read,
+        .write           = _usb_write,
         .download_buffer = _download_buffer,
         .upload_buffer   = _upload_buffer,
         .execute_buffer  = _execute_buffer,
@@ -796,8 +736,8 @@ const ssusb_device_driver_t device_datalink_bluetooth = {
         /* .error           = _error, */
         .poll            = _poll,
         .peek            = _peek,
-        .read            = _device_read,
-        .write           = _device_write,
+        .read            = NULL,
+        .write           = NULL,
         .download_buffer = _download_buffer,
         .upload_buffer   = _upload_buffer,
         .execute_buffer  = _execute_buffer,

@@ -6,6 +6,7 @@
 
 #include "ssusb.h"
 
+#include "debug.h"
 #include "file.h"
 
 #include "drivers/driver.h"
@@ -24,8 +25,8 @@ _upload_execute_file(const char *file, uint32_t base_address, bool execute)
         }
 
         void *buffer;
-        size_t buffer_len;
-        ret = file_read(file, &buffer, &buffer_len);
+        size_t buffer_size;
+        ret = file_read(file, &buffer, &buffer_size);
         if (ret != SSUSB_OK) {
                 goto exit;
         }
@@ -34,10 +35,10 @@ _upload_execute_file(const char *file, uint32_t base_address, bool execute)
 
         if (execute) {
                 driver_ret =
-                    driver->execute_buffer(buffer, base_address, buffer_len);
+                    driver->execute_buffer(buffer, base_address, buffer_size);
         } else {
                 driver_ret =
-                    driver->upload_buffer(buffer, base_address, buffer_len);
+                    driver->upload_buffer(buffer, base_address, buffer_size);
         }
 
         if (driver_ret < 0) {
@@ -53,7 +54,7 @@ exit:
 }
 
 ssusb_ret_t
-ssusb_read(void *buffer, size_t len)
+ssusb_read(void *buffer, size_t size)
 {
         ssusb_ret_t ret;
 
@@ -64,7 +65,7 @@ ssusb_read(void *buffer, size_t len)
                 return ret;
         }
 
-        if ((driver->read(buffer, len)) < 0) {
+        if ((driver->read(buffer, size)) < 0) {
                 return SSUSB_DEVICE_READ_ERROR;
         }
 
@@ -72,7 +73,7 @@ ssusb_read(void *buffer, size_t len)
 }
 
 ssusb_ret_t
-ssusb_write(const void *buffer, size_t len)
+ssusb_write(const void *buffer, size_t size)
 {
         ssusb_ret_t ret;
 
@@ -83,7 +84,7 @@ ssusb_write(const void *buffer, size_t len)
                 return ret;
         }
 
-        if ((driver->write(buffer, len)) < 0) {
+        if ((driver->write(buffer, size)) < 0) {
                 return SSUSB_DEVICE_WRITE_ERROR;
         }
 
@@ -91,7 +92,7 @@ ssusb_write(const void *buffer, size_t len)
 }
 
 ssusb_ret_t
-ssusb_download_file(const char *output_file, uint32_t base_address, size_t len)
+ssusb_download_file(const char *output_file, uint32_t base_address, size_t size)
 {
         ssusb_ret_t ret;
 
@@ -103,18 +104,18 @@ ssusb_download_file(const char *output_file, uint32_t base_address, size_t len)
         }
 
         void *buffer;
-        if ((buffer = malloc(len)) == NULL) {
+        if ((buffer = malloc(size)) == NULL) {
                 ret = SSUSB_INSUFFICIENT_MEMORY;
                 goto error;
         }
-        (void)memset(buffer, 0, len);
+        (void)memset(buffer, 0x00, size);
 
-        if ((driver->download_buffer(buffer, base_address, len)) < 0) {
+        if ((driver->download_buffer(buffer, base_address, size)) < 0) {
                 ret = SSUSB_DEVICE_DOWNLOAD_ERROR;
                 goto error;
         }
 
-        ret = file_write(output_file, buffer, len);
+        ret = file_write(output_file, buffer, size);
 
 error:
         if (buffer == NULL) {

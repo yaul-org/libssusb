@@ -77,12 +77,12 @@ static int _init(void);
 static int _deinit(void);
 
 static int _upload_execute_buffer(const void *buffer, uint32_t base_address,
-    size_t len, bool execute);
+    size_t size, bool execute);
 
 /* Helpers */
-static int _command_send(protocol_command_t command, uint32_t address, size_t len);
-static int _checksum_receive(const void *buffer, size_t len);
-static int _checksum_send(const void *buffer, size_t len);
+static int _command_send(protocol_command_t command, uint32_t address, size_t size);
+static int _checksum_receive(const void *buffer, size_t size);
+static int _checksum_send(const void *buffer, size_t size);
 
 #include <libusb.h>
 
@@ -168,27 +168,27 @@ exit:
 }
 
 static int
-_poll(size_t *read_len)
+_poll(size_t *read_size)
 {
-        return ftdi_buffered_poll(&_ftdi_context, read_len);
+        return ftdi_buffered_poll(&_ftdi_context, read_size);
 }
 
 static int
-_peek(size_t len, void *buffer, size_t *read_len)
+_peek(size_t size, void *buffer, size_t *read_size)
 {
-        return ftdi_buffered_peek(&_ftdi_context, len, buffer, read_len);
+        return ftdi_buffered_peek(&_ftdi_context, size, buffer, read_size);
 }
 
 static int
-_device_read(void *buffer, size_t len)
+_device_read(void *buffer, size_t size)
 {
-        return ftdi_buffered_read_data(&_ftdi_context, buffer, len);
+        return ftdi_buffered_read_data(&_ftdi_context, buffer, size);
 }
 
 static int
-_device_write(const void *buffer, size_t len)
+_device_write(const void *buffer, size_t size)
 {
-        return ftdi_buffered_write_data(&_ftdi_context, buffer, len);
+        return ftdi_buffered_write_data(&_ftdi_context, buffer, size);
 }
 
 static ssusb_driver_error_t
@@ -198,12 +198,12 @@ _error(void)
 }
 
 static int
-_upload_buffer(const void *buffer, uint32_t base_address, size_t len)
+_upload_buffer(const void *buffer, uint32_t base_address, size_t size)
 {
         DEBUG_PRINTF("Enter\n");
 
         int ret;
-        ret = _upload_execute_buffer(buffer, base_address, len,
+        ret = _upload_execute_buffer(buffer, base_address, size,
             /* execute = */ false);
 
         DEBUG_PRINTF("Exit\n");
@@ -212,7 +212,7 @@ _upload_buffer(const void *buffer, uint32_t base_address, size_t len)
 }
 
 static int
-_download_buffer(void *buffer, uint32_t base_address, size_t len)
+_download_buffer(void *buffer, uint32_t base_address, size_t size)
 {
         DEBUG_PRINTF("Enter\n");
 
@@ -232,15 +232,15 @@ _download_buffer(void *buffer, uint32_t base_address, size_t len)
                 goto error;
         }
 
-        if ((_command_send(CMD_DOWNLOAD, base_address, len)) < 0) {
+        if ((_command_send(CMD_DOWNLOAD, base_address, size)) < 0) {
                 goto error;
         }
 
-        if ((_device_read(buffer, len)) < 0) {
+        if ((_device_read(buffer, size)) < 0) {
                 goto error;
         }
 
-        if ((_checksum_receive(buffer, len)) < 0) {
+        if ((_checksum_receive(buffer, size)) < 0) {
                 goto error;
         }
 
@@ -256,11 +256,11 @@ exit:
 }
 
 static int
-_execute_buffer(const void *buffer, uint32_t base_address, size_t len)
+_execute_buffer(const void *buffer, uint32_t base_address, size_t size)
 {
         DEBUG_PRINTF("Enter\n");
 
-        int ret = _upload_execute_buffer(buffer, base_address, len,
+        int ret = _upload_execute_buffer(buffer, base_address, size,
             /* execute = */ true);
 
         DEBUG_PRINTF("Exit\n");
@@ -270,7 +270,7 @@ _execute_buffer(const void *buffer, uint32_t base_address, size_t len)
 
 static int
 _upload_execute_buffer(const void *buffer, uint32_t base_address,
-    size_t len, bool execute)
+    size_t size, bool execute)
 {
         DEBUG_PRINTF("Enter\n");
 
@@ -293,15 +293,15 @@ _upload_execute_buffer(const void *buffer, uint32_t base_address,
         uint8_t command;
         command = (execute) ? CMD_EXECUTE_EXT : CMD_UPLOAD;
 
-        if ((_command_send(command, base_address, len)) < 0) {
+        if ((_command_send(command, base_address, size)) < 0) {
                 goto error;
         }
 
-        if ((_device_write(buffer, len)) < 0) {
+        if ((_device_write(buffer, size)) < 0) {
                 goto error;
         }
 
-        if ((_checksum_send(buffer, len)) < 0) {
+        if ((_checksum_send(buffer, size)) < 0) {
                 goto error;
         }
 
@@ -317,7 +317,7 @@ exit:
 }
 
 static int
-_command_send(protocol_command_t command, uint32_t address, size_t len)
+_command_send(protocol_command_t command, uint32_t address, size_t size)
 {
 #ifdef DEBUG
         static const char *command2str[] = {
@@ -334,13 +334,13 @@ _command_send(protocol_command_t command, uint32_t address, size_t len)
         _driver_error = SSUSB_DRIVER_OK;
 
         uint8_t buffer[13];
-        uint8_t buffer_len;
+        uint8_t buffer_size;
 
         DEBUG_PRINTF("Command: \"%s\" (0x%02X)\n",
             command2str[command],
             command);
         DEBUG_PRINTF("Address: 0x%08X\n", address);
-        DEBUG_PRINTF("Size: %zuB (0x%08zX)\n", len, len);
+        DEBUG_PRINTF("Size: %zuB (0x%08zX)\n", size, size);
 
         buffer[ 0] = command;
 
@@ -349,12 +349,12 @@ _command_send(protocol_command_t command, uint32_t address, size_t len)
         buffer[ 3] = ADDRESS_01(address);
         buffer[ 4] = ADDRESS_LSB(address);
 
-        buffer[ 5] = LEN_MSB(len);
-        buffer[ 6] = LEN_02(len);
-        buffer[ 7] = LEN_01(len);
-        buffer[ 8] = LEN_LSB(len);
+        buffer[ 5] = SIZE_MSB(size);
+        buffer[ 6] = SIZE_02(size);
+        buffer[ 7] = SIZE_01(size);
+        buffer[ 8] = SIZE_LSB(size);
 
-        buffer_len = 9;
+        buffer_size = 9;
 
         if (command == CMD_EXECUTE_EXT) {
                 buffer[ 9] = 0;
@@ -362,18 +362,18 @@ _command_send(protocol_command_t command, uint32_t address, size_t len)
                 buffer[11] = 0;
                 buffer[12] = 0;
 
-                buffer_len = 13;
+                buffer_size = 13;
         }
 
-        return _device_write(buffer, buffer_len);
+        return _device_write(buffer, buffer_size);
 }
 
 static int
-_checksum_receive(const void *buffer, size_t len)
+_checksum_receive(const void *buffer, size_t size)
 {
         _driver_error = SSUSB_DRIVER_OK;
 
-        const crc_t checksum = crc_calculate(buffer, len);
+        const crc_t checksum = crc_calculate(buffer, size);
 
         uint8_t read_buffer;
         if ((_device_read(&read_buffer, sizeof(read_buffer))) < 0) {
@@ -393,11 +393,11 @@ _checksum_receive(const void *buffer, size_t len)
 }
 
 static int
-_checksum_send(const void *buffer, size_t len)
+_checksum_send(const void *buffer, size_t size)
 {
         _driver_error = SSUSB_DRIVER_OK;
 
-        const crc_t crc = crc_calculate(buffer, len);
+        const crc_t crc = crc_calculate(buffer, size);
 
         if ((_device_write(&crc, sizeof(crc))) < 0) {
                 return -1;

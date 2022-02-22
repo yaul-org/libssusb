@@ -163,7 +163,7 @@ _drivers_get(const char *driver_name)
             _device_drivers;
 
         while (*device_driver != NULL) {
-                if ((strncmp(driver_name, (*device_driver)->name, SSUSB_DRIVER_NAME_LEN)) == 0) {
+                if ((strncmp(driver_name, (*device_driver)->name, SSUSB_DRIVER_NAME_SIZE)) == 0) {
                         return *device_driver;
                 }
 
