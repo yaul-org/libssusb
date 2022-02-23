@@ -28,7 +28,7 @@
 void debug_hexdump(const char *buffer, size_t size, uint32_t width);
 
 #define DEBUG_HEXDUMP(buffer, size) do {                                       \
-        debug_hexdump(buffer, size, 24);                                       \
+        debug_hexdump((void *)buffer, size, 24);                               \
 } while (false)
 #else
 #define DEBUG_HEXDUMP(...)

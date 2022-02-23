@@ -34,9 +34,9 @@ debug_hexdump(const char *buffer, size_t size, uint32_t max_width)
                 const bool last_byte = ((i + 1) == size);
 
                 if (eol && !last_byte) {
-                        (void)fprintf(stderr, "\n[1;35m%02X[m %02X", i, buffer[i]);
+                        (void)fprintf(stderr, "\n[1;35m%02X[m %02X", i, (uint8_t)buffer[i]);
                 } else {
-                        (void)fprintf(stderr, " %02X", buffer[i]);
+                        (void)fprintf(stderr, " %02X", (uint8_t)buffer[i]);
                 }
 
                 fold++;
