@@ -24,7 +24,6 @@ typedef enum {
         SSUSB_DRIVER_CORRUPTED_DATA,
         SSUSB_DRIVER_BAD_REQUEST,
         SSUSB_DRIVER_INSUFFICIENT_MEMORY,
-        SSUSB_DRIVER_PARAM_NULL,
 } ssusb_driver_error_t;
 
 typedef struct {
