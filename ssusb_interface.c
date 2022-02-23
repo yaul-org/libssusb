@@ -54,6 +54,45 @@ exit:
 }
 
 ssusb_ret_t
+ssusb_poll(size_t *read_size)
+{
+        ssusb_ret_t ret;
+
+        const ssusb_device_driver_t *driver;
+        ret = ssusb_drivers_selected_get(&driver);
+
+        if (ret != SSUSB_OK) {
+                return ret;
+        }
+
+        if ((driver->poll(read_size)) < 0) {
+                return SSUSB_DEVICE_POLL_ERROR;
+        }
+
+        return SSUSB_OK;
+}
+
+ssusb_ret_t
+ssusb_peek(size_t size, void *buffer, size_t *read_size)
+{
+        ssusb_ret_t ret;
+
+        const ssusb_device_driver_t *driver;
+        ret = ssusb_drivers_selected_get(&driver);
+
+        if (ret != SSUSB_OK) {
+                return ret;
+        }
+
+        if ((driver->peek(size, buffer, read_size)) < 0) {
+                return SSUSB_DEVICE_PEEK_ERROR;
+        }
+
+        return SSUSB_OK;
+}
+
+
+ssusb_ret_t
 ssusb_read(void *buffer, size_t size)
 {
         ssusb_ret_t ret;

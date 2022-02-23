@@ -24,6 +24,8 @@ DLL_PUBLIC ssusb_ret_t ssusb_drivers_detect_select(void);
 
 DLL_PUBLIC ssusb_ret_t ssusb_drivers_list_get(const ssusb_driver_t **driver_list);
 
+DLL_PUBLIC ssusb_ret_t ssusb_poll(size_t *read_size);
+DLL_PUBLIC ssusb_ret_t ssusb_peek(size_t size, void *buffer, size_t *read_size);
 DLL_PUBLIC ssusb_ret_t ssusb_read(void *buffer, size_t size);
 DLL_PUBLIC ssusb_ret_t ssusb_write(const void *buffer, size_t size);
 DLL_PUBLIC ssusb_ret_t ssusb_file_download(const char *output_file, uint32_t base_address, size_t size);
