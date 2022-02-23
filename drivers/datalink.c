@@ -348,6 +348,12 @@ _upload_buffer(const void *buffer, uint32_t base_address, size_t size)
         return ret;
 }
 
+static ssusb_driver_error_t
+_error(void)
+{
+        return SSUSB_DRIVER_OK;
+}
+
 static int
 _poll(size_t *read_size)
 {
@@ -695,7 +701,7 @@ const ssusb_device_driver_t device_datalink_red = {
         .description     = "USB DataLink Red LED Revision",
         .init            = _red_init,
         .deinit          = _deinit,
-        /* .error           = _error, */
+        .error           = _error,
         .poll            = _poll,
         .peek            = _peek,
         .read            = _usb_read,
@@ -705,12 +711,12 @@ const ssusb_device_driver_t device_datalink_red = {
         .execute_buffer  = _execute_buffer,
 };
 
-const ssusb_device_driver_t __device_datalink_green = {
+const ssusb_device_driver_t device_datalink_green = {
         .name            = "datalink-green",
         .description     = "USB DataLink Green LED Revision",
         .init            = _green_init,
         .deinit          = _deinit,
-        /* .error           = _error, */
+        .error           = _error,
         .poll            = _poll,
         .peek            = _peek,
         .read            = _usb_read,
@@ -725,7 +731,7 @@ const ssusb_device_driver_t device_datalink_bluetooth = {
         .description     = "USB DataLink Bluetooth LED",
         .init            = _bluetooth_init,
         .deinit          = _bluetooth_deinit,
-        /* .error           = _error, */
+        .error           = _error,
         .poll            = _poll,
         .peek            = _peek,
         .read            = NULL,
