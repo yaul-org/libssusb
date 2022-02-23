@@ -71,7 +71,6 @@ typedef enum {
 
 static ssusb_driver_error_t _driver_error = SSUSB_DRIVER_OK;
 static struct ftdi_context _ftdi_context;
-static int _ftdi_error = 0;
 
 static int _init(void);
 static int _deinit(void);
@@ -97,30 +96,29 @@ _init(void)
 #define READ_PAYLOAD_SIZE     (USB_PAYLOAD(USB_READ_PACKET_SIZE))
 #define WRITE_PAYLOAD_SIZE    (USB_PAYLOAD(USB_WRITE_PACKET_SIZE))
 
-        if ((_ftdi_error = ftdi_init(&_ftdi_context)) < 0) {
+        if ((ftdi_init(&_ftdi_context)) < 0) {
                 DEBUG_PRINTF("ftdi_init()\n");
                 return -1;
         }
-        _ftdi_error = ftdi_usb_open(&_ftdi_context, I_VENDOR, I_PRODUCT);
-        if (_ftdi_error < 0) {
+        if ((ftdi_usb_open(&_ftdi_context, I_VENDOR, I_PRODUCT)) < 0) {
                 DEBUG_PRINTF("ftdi_usb_open()\n");
                 goto error;
         }
-        if ((_ftdi_error = ftdi_tcioflush(&_ftdi_context)) < 0) {
+        if ((ftdi_tcioflush(&_ftdi_context)) < 0) {
                 DEBUG_PRINTF("ftdi_tcioflush()\n");
                 goto error;
         }
-        if ((_ftdi_error = ftdi_read_data_set_chunksize(&_ftdi_context,
+        if ((ftdi_read_data_set_chunksize(&_ftdi_context,
                     USB_READ_PACKET_SIZE)) < 0) {
                 DEBUG_PRINTF("ftdi_read_data_set_chunksize()\n");
                 goto error;
         }
-        if ((_ftdi_error = ftdi_write_data_set_chunksize(&_ftdi_context,
+        if ((ftdi_write_data_set_chunksize(&_ftdi_context,
                     USB_WRITE_PACKET_SIZE)) < 0) {
                 DEBUG_PRINTF("ftdi_write_data_set_chunksize()\n");
                 goto error;
         }
-        if ((_ftdi_error = ftdi_set_bitmode(&_ftdi_context, 0x00, BITMODE_RESET)) < 0) {
+        if ((ftdi_set_bitmode(&_ftdi_context, 0x00, BITMODE_RESET)) < 0) {
                 DEBUG_PRINTF("ftdi_set_bitmode()\n");
                 goto error;
         }
@@ -132,9 +130,7 @@ _init(void)
         return 0;
 
 error:
-        DEBUG_PRINTF("_ftdi_error: %i -> %s\n", _ftdi_error, ftdi_get_error_string(&_ftdi_context));
-
-        if ((_ftdi_error = ftdi_usb_close(&_ftdi_context)) < 0) {
+        if ((ftdi_usb_close(&_ftdi_context)) < 0) {
                 return -1;
         }
 
@@ -151,12 +147,12 @@ _deinit(void)
         int exit_code;
         exit_code = 0;
 
-        if ((_ftdi_error = ftdi_tcioflush(&_ftdi_context)) < 0) {
+        if ((ftdi_tcioflush(&_ftdi_context)) < 0) {
                 exit_code = -1;
                 goto exit;
         }
 
-        if ((_ftdi_error = ftdi_usb_close(&_ftdi_context)) < 0) {
+        if ((ftdi_usb_close(&_ftdi_context)) < 0) {
                 exit_code = -1;
                 goto exit;
         }

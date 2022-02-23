@@ -86,7 +86,6 @@ typedef struct {
 
 /* static ssusb_driver_error_t _driver_error = SSUSB_DRIVER_OK; */
 static struct ftdi_context _ftdi_context;
-static int _ftdi_error = 0;
 static const device_rev_t *_device_rev = NULL;
 
 static const uint8_t _red_packet_response_error[PACKET_REV_RED_HEADER_SIZE] = {
@@ -213,12 +212,11 @@ _init(const device_rev_t *device_rev)
 
         _device_rev = device_rev;
 
-        if ((_ftdi_error = ftdi_init(&_ftdi_context)) < 0) {
+        if ((ftdi_init(&_ftdi_context)) < 0) {
                 DEBUG_PRINTF("ftdi_init()\n");
                 return -1;
         }
-        _ftdi_error = ftdi_usb_open(&_ftdi_context, I_VENDOR, I_PRODUCT);
-        if (_ftdi_error < 0) {
+        if ((ftdi_usb_open(&_ftdi_context, I_VENDOR, I_PRODUCT)) < 0) {
                 DEBUG_PRINTF("ftdi_usb_open()\n");
                 goto error;
         }
@@ -226,15 +224,15 @@ _init(const device_rev_t *device_rev)
                 DEBUG_PRINTF("ftdi_usb_match_product()\n");
                 goto error;
         }
-        if ((_ftdi_error = ftdi_set_baudrate(&_ftdi_context, _device_rev->baud_rate)) < 0) {
+        if ((ftdi_set_baudrate(&_ftdi_context, _device_rev->baud_rate)) < 0) {
                 DEBUG_PRINTF("ftdi_set_baudrate()\n");
                 goto error;
         }
-        if ((_ftdi_error = ftdi_set_line_property(&_ftdi_context, BITS_8, STOP_BIT_2, NONE)) < 0) {
+        if ((ftdi_set_line_property(&_ftdi_context, BITS_8, STOP_BIT_2, NONE)) < 0) {
                 DEBUG_PRINTF("ftdi_set_line_property()\n");
                 goto error;
         }
-        if ((_ftdi_error = ftdi_tcioflush(&_ftdi_context)) < 0) {
+        if ((ftdi_tcioflush(&_ftdi_context)) < 0) {
                 DEBUG_PRINTF("ftdi_tcioflush()\n");
                 goto error;
         }
@@ -247,9 +245,7 @@ _init(const device_rev_t *device_rev)
         return 0;
 
 error:
-        DEBUG_PRINTF("_ftdi_error: %i\n", _ftdi_error);
-
-        if ((_ftdi_error = ftdi_usb_close(&_ftdi_context)) < 0) {
+        if ((ftdi_usb_close(&_ftdi_context)) < 0) {
                 return -1;
         }
 
@@ -268,12 +264,12 @@ _deinit(void)
         int exit_code;
         exit_code = 0;
 
-        if ((_ftdi_error = ftdi_tcioflush(&_ftdi_context)) < 0) {
+        if ((ftdi_tcioflush(&_ftdi_context)) < 0) {
                 exit_code = -1;
                 goto exit;
         }
 
-        if ((_ftdi_error = ftdi_usb_close(&_ftdi_context)) < 0) {
+        if ((ftdi_usb_close(&_ftdi_context)) < 0) {
                 exit_code = -1;
                 goto exit;
         }
@@ -299,21 +295,9 @@ _device_revision_test(void)
          * we'll get a valid (error) packet */
         packet_t packet;
 
-        /* This packet was extracted from the official tool via USB packet
-         * sniffing */
-        static const uint8_t packet_test[] = {
-                PACKET_HEADER_SEND,
-                0x07,
-                PACKET_TYPE_TEST,
-                0x00,
-                0x18,
-                0x00,
-                0x00,
-                0x00,
-                0x83
-        };
+        _packet_generate(PACKET_TYPE_TEST, &packet, 0x00000000, NULL, 0);
 
-        if ((_usb_write(packet_test, PACKET_REV_RED_HEADER_SIZE)) < 0) {
+        if ((_usb_write(packet.buffer, PACKET_REV_RED_HEADER_SIZE)) < 0) {
                 DEBUG_PRINTF("_device_write error\n");
                 return -1;
         }
@@ -561,6 +545,15 @@ _packet_generate(packet_type_t packet_type, packet_t *packet,
                 packet->size = _device_rev->packet.header_size + size + 1;
                 break;
         case PACKET_TYPE_TEST:
+                packet->buffer[1] = 0x07;
+                packet->buffer[3] = 0x00;
+                packet->buffer[4] = 0x18;
+                packet->buffer[5] = 0x00;
+                packet->buffer[6] = 0x00;
+                packet->buffer[7] = 0x00;
+                packet->buffer[8] = 0x83; /* Hard coded checksum */
+
+                packet->size = _device_rev->packet.header_size;
                 break;
         }
 }
@@ -623,7 +616,6 @@ _packet_download_xchg(packet_type_t packet_type, uint32_t address, void *buffer,
 
         return 0;
 }
-
 
 static uint8_t
 _packet_checksum_generate(const uint8_t *buffer, uint32_t size)
