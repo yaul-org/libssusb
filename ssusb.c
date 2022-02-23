@@ -12,6 +12,7 @@
 
 #include "ssusb.h"
 
+#include "debug.h"
 #include "drivers/driver.h"
 
 extern const ssusb_device_driver_t device_datalink_red;
@@ -127,6 +128,28 @@ ssusb_drivers_select(const char *driver_name)
         _device_driver = select_driver;
 
         return SSUSB_OK;
+}
+
+ssusb_ret_t
+ssusb_drivers_detect_select(void)
+{
+        const ssusb_driver_t *driver;
+        ssusb_drivers_list_get(&driver);
+
+        while (driver != NULL) {
+                DEBUG_PRINTF("Detecting %s...\n", driver->name);
+
+                if ((ssusb_drivers_select(driver->name)) == SSUSB_OK) {
+                        DEBUG_PRINTF("Found\n");
+                        return SSUSB_OK;
+                }
+
+                driver = driver->next;
+        }
+
+        DEBUG_PRINTF("No device driver found\n");
+
+        return SSUSB_SELECT_NOT_FOUND;
 }
 
 ssusb_ret_t

@@ -200,8 +200,6 @@ _green_init(void)
 static int
 _bluetooth_init(void)
 {
-        assert(false && "Not yet implemented");
-
         return -1;
 }
 
@@ -283,8 +281,6 @@ exit:
 static int
 _bluetooth_deinit(void)
 {
-        assert(false && "Not yet implemented");
-
         return -1;
 }
 

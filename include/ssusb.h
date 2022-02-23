@@ -20,6 +20,8 @@ DLL_PUBLIC void ssusb_deinit(void);
 DLL_PUBLIC ssusb_ret_t ssusb_drivers_select(const char *driver_name);
 DLL_PUBLIC ssusb_ret_t ssusb_drivers_deselect(void);
 
+DLL_PUBLIC ssusb_ret_t ssusb_drivers_detect_select(void);
+
 DLL_PUBLIC ssusb_ret_t ssusb_drivers_list_get(const ssusb_driver_t **driver_list);
 
 DLL_PUBLIC ssusb_ret_t ssusb_read(void *buffer, size_t size);
