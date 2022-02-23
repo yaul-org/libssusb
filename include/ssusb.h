@@ -14,6 +14,8 @@
 #include <ssusb-types.h>
 #include <ssusb-export.h>
 
+__BEGIN_DECLS
+
 DLL_PUBLIC ssusb_ret_t ssusb_init(void);
 DLL_PUBLIC void ssusb_deinit(void);
 
@@ -31,5 +33,7 @@ DLL_PUBLIC ssusb_ret_t ssusb_write(const void *buffer, size_t size);
 DLL_PUBLIC ssusb_ret_t ssusb_file_download(const char *output_file, uint32_t base_address, size_t size);
 DLL_PUBLIC ssusb_ret_t ssusb_file_upload(const char *input_file, uint32_t base_address);
 DLL_PUBLIC ssusb_ret_t ssusb_file_execute(const char *input_file, uint32_t base_address);
+
+__END_DECLS
 
 #endif /* !LIBSSUSB_SSUSB_H */
