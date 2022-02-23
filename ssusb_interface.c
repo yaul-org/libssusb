@@ -92,7 +92,7 @@ ssusb_write(const void *buffer, size_t size)
 }
 
 ssusb_ret_t
-ssusb_download_file(const char *output_file, uint32_t base_address, size_t size)
+ssusb_file_download(const char *output_file, uint32_t base_address, size_t size)
 {
         ssusb_ret_t ret;
 
@@ -126,14 +126,14 @@ error:
 }
 
 ssusb_ret_t
-ssusb_upload_file(const char *input_file, uint32_t base_address)
+ssusb_file_upload(const char *input_file, uint32_t base_address)
 {
         return _upload_execute_file(input_file, base_address,
             /* execute = */ false);
 }
 
 ssusb_ret_t
-ssusb_execute_file(const char *input_file, uint32_t base_address)
+ssusb_file_execute(const char *input_file, uint32_t base_address)
 {
         return _upload_execute_file(input_file, base_address,
             /* execute = */ true);

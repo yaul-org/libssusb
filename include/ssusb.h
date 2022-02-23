@@ -26,8 +26,8 @@ DLL_PUBLIC ssusb_ret_t ssusb_drivers_list_get(const ssusb_driver_t **driver_list
 
 DLL_PUBLIC ssusb_ret_t ssusb_read(void *buffer, size_t size);
 DLL_PUBLIC ssusb_ret_t ssusb_write(const void *buffer, size_t size);
-DLL_PUBLIC ssusb_ret_t ssusb_download_file(const char *output_file, uint32_t base_address, size_t size);
-DLL_PUBLIC ssusb_ret_t ssusb_upload_file(const char *input_file, uint32_t base_address);
-DLL_PUBLIC ssusb_ret_t ssusb_execute_file(const char *input_file, uint32_t base_address);
+DLL_PUBLIC ssusb_ret_t ssusb_file_download(const char *output_file, uint32_t base_address, size_t size);
+DLL_PUBLIC ssusb_ret_t ssusb_file_upload(const char *input_file, uint32_t base_address);
+DLL_PUBLIC ssusb_ret_t ssusb_file_execute(const char *input_file, uint32_t base_address);
 
 #endif /* !LIBSSUSB_SSUSB_H */
