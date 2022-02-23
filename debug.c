@@ -9,50 +9,40 @@
 #include <string.h>
 
 #include "debug.h"
+#include <math_utilities.h>
 
 void
-debug_hexdump(const uint8_t *buffer, uint32_t len)
+debug_hexdump(const char *buffer, size_t size, uint32_t max_width)
 {
-        if (len == 0) {
+        if (size == 0) {
                 return;
         }
 
-        static char output_buffer[2048];
+        max_width = min(min(size, max_width), 80U);
 
-        uint32_t output_idx;
-        output_idx = 0;
+        (void)fputs("  ", stderr);
 
-        uint32_t fold_x;
-        fold_x = 0;
+        for (uint32_t i = 0; i < max_width; i++) {
+                (void)fprintf(stderr, " [1;35m%02X[m", i);
+        }
 
-        /* Skip 1st line */
-        (void)sprintf(output_buffer, "\nHH HH HH HH HH HH HH HH\n");
-        output_idx += strlen(output_buffer);
+        uint32_t fold;
+        fold = 0;
 
-        uint32_t buffer_idx;
-        for (buffer_idx = 0; buffer_idx < len; buffer_idx++) {
-                (void)sprintf(&output_buffer[output_idx],
-                    "%02X", buffer[buffer_idx]);
+        for (uint32_t i = 0; i < size; i++) {
+                const bool eol = ((fold % max_width) == 0);
+                const bool last_byte = ((i + 1) == size);
 
-                output_idx += 2;
-
-                if (((fold_x + 1) % 20) == 0) {
-                        output_buffer[output_idx] = '\n';
-                        output_idx++;
-                } else if ((buffer_idx + 1) != len) {
-                        output_buffer[output_idx] = ' ';
-                        output_idx++;
+                if (eol && !last_byte) {
+                        (void)fprintf(stderr, "\n[1;35m%02X[m %02X", i, buffer[i]);
+                } else {
+                        (void)fprintf(stderr, " %02X", buffer[i]);
                 }
 
-                fold_x++;
+                fold++;
         }
 
-        if (output_buffer[output_idx] != '\n') {
-                output_buffer[output_idx] = '\n';
-                output_idx++;
-        }
+        (void)putc('\n', stderr);
 
-        output_buffer[output_idx] = '\0';
-
-        DEBUG_PRINTF("%s", output_buffer);
+        (void)fflush(stderr);
 }

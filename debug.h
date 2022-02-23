@@ -25,10 +25,10 @@
 #ifdef DEBUG
 #include <inttypes.h>
 
-void debug_hexdump(const uint8_t *, uint32_t);
+void debug_hexdump(const char *buffer, size_t size, uint32_t width);
 
-#define DEBUG_HEXDUMP(buffer, len) do {                                        \
-        debug_hexdump(buffer, len);                                            \
+#define DEBUG_HEXDUMP(buffer, size) do {                                       \
+        debug_hexdump(buffer, size, 24);                                       \
 } while (false)
 #else
 #define DEBUG_HEXDUMP(...)
