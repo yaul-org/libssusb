@@ -538,7 +538,9 @@ _packet_generate(packet_type_t packet_type, packet_t *packet,
                 packet->buffer[1] = min(7 + size, _device_rev->packet.total_size);
 
                 /* Copy data */
-                (void)memcpy(&packet->buffer[8], data, size);
+                if (data != NULL) {
+                        (void)memcpy(&packet->buffer[8], data, size);
+                }
 
                 /* Generate checksum at last byte */
                 packet->buffer[_device_rev->packet.header_size + size - 1] =
