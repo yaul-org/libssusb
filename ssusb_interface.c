@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2012-2022 Israel Jacquez
+ * See LICENSE for details.
+ *
+ * Israel Jacquez <mrkotfw@gmail.com>
+ */
+
 #include <stdio.h>
 #include <stdbool.h>
 
