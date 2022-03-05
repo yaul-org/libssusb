@@ -138,6 +138,35 @@ ssusb_write(const void *buffer, size_t size)
 }
 
 ssusb_ret_t
+ssusb_download(void *buffer, uint32_t base_address, size_t size)
+{
+        ssusb_ret_t ret;
+
+        if (buffer == NULL) {
+                return SSUSB_BAD_ARG;
+        }
+
+        const ssusb_device_driver_t *driver;
+        ret = ssusb_drivers_selected_get(&driver);
+
+        if (ret != SSUSB_OK) {
+                return ret;
+        }
+
+        if ((driver->download_buffer(buffer, base_address, size)) < 0) {
+                ret = SSUSB_DEVICE_DOWNLOAD_ERROR;
+                goto error;
+        }
+
+error:
+        if (buffer == NULL) {
+                free(buffer);
+        }
+
+        return ret;
+}
+
+ssusb_ret_t
 ssusb_file_download(const char *output_file, uint32_t base_address, size_t size)
 {
         ssusb_ret_t ret;

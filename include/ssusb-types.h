@@ -20,6 +20,7 @@ struct ssusb_driver {
 typedef enum {
         SSUSB_OK,
 
+        SSUSB_BAD_ARG,
         SSUSB_INSUFFICIENT_MEMORY,
 
         SSUSB_INIT_ERROR,
