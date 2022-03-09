@@ -4,10 +4,14 @@ project(
   version: '0.0.1'
 )
 
+pkgconfig = import('pkgconfig')
+
 project_description = 'Library for accessing Sega Saturn related USB devices'
 
 project_headers = [
-  'ssusb.h'
+  'include/ssusb/ssusb.h',
+  'include/ssusb/ssusb-export.h',
+  'include/ssusb/ssusb-types.h'
 ]
 
 project_source_files = [
@@ -43,7 +47,6 @@ if get_option('buildtype').startswith('debug')
   project_source_files += 'debug.c'
 
   add_project_arguments('-DDEBUG', language: 'c')
-  add_project_arguments('-g', language: 'c')
 endif
 
 # Target
@@ -59,12 +62,25 @@ project_target = shared_library(
   dependencies: project_dependencies,
 )
 
+install_headers(
+  project_headers,
+  subdir: 'ssusb'
+)
+
 # Project
 
 # Make this library usable as a Meson subproject
-project_dep = declare_dependency(
+libssusb_dep = declare_dependency(
   include_directories: public_headers,
   link_with: project_target,
 )
 
-set_variable('lib' + meson.project_name() + '_dep', project_dep)
+pkgconfig.generate(
+  project_target,
+  name: 'libssusb',
+  subdirs: [
+    '.'
+  ],
+  description: project_description,
+  requires: project_dependencies,
+)

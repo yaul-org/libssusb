@@ -12,8 +12,8 @@
 
 #include <stddef.h>
 
-#include <ssusb-types.h>
-#include <ssusb-export.h>
+#include <ssusb/ssusb-types.h>
+#include <ssusb/ssusb-export.h>
 
 DLL_LOCAL int ftdi_buffered_init(struct ftdi_context *context);
 DLL_LOCAL void ftdi_buffered_deinit(struct ftdi_context *ftdi);

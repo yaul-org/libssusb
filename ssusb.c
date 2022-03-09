@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "ssusb.h"
+#include <ssusb/ssusb.h>
 
 #include "debug.h"
 #include "drivers/driver.h"

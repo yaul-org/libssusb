@@ -11,8 +11,8 @@
 #include <stddef.h>
 #include <inttypes.h>
 
-#include <ssusb-types.h>
-#include <ssusb-export.h>
+#include <ssusb/ssusb-types.h>
+#include <ssusb/ssusb-export.h>
 
 __BEGIN_DECLS
 

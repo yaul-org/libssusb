@@ -10,8 +10,8 @@
 
 #include <stdio.h>
 
-#include <ssusb-types.h>
-#include <ssusb-export.h>
+#include <ssusb/ssusb-types.h>
+#include <ssusb/ssusb-export.h>
 
 DLL_LOCAL ssusb_ret_t file_read(const char *input_file, void **buffer, size_t *len);
 DLL_LOCAL ssusb_ret_t file_write(const char *output_file, const void *buffer, size_t len);
