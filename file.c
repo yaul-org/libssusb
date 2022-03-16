@@ -105,8 +105,6 @@ file_read(const char *input_file, void **buffer, size_t *len)
                 ret = _errno_convert();
         }
 
-        return ret;
-
 error:
         fclose(file);
 
