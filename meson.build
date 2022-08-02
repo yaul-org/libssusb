@@ -1,7 +1,8 @@
 project(
   'ssusb',
   'c',
-  version: '0.0.1'
+  version: run_command('cat', 'VERSION', check: true).stdout().strip(),
+  meson_version: '>=0.57.0'
 )
 
 pkgconfig = import('pkgconfig')
